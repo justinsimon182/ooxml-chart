@@ -1,0 +1,15 @@
+[package]
+name = "ooxml-chart"
+description = "Author OOXML (Excel) chart parts and their drawing anchors from a declarative specification."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+publish = true
+repository = "https://github.com/vantor/ooxml-chart"
+keywords = ["ooxml", "xlsx", "excel", "chart", "spreadsheet"]
+categories = ["encoding"]
+readme = "README.md"
+
+[dependencies]
+thiserror = "2"
