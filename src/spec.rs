@@ -961,6 +961,12 @@ pub struct Axis {
     /// Cross the other axis at its maximum instead of at zero. On a horizontal
     /// bar chart's value axis this moves the axis to the other side.
     pub crosses_max: bool,
+    /// Cross the other axis at this value, in the *other* axis's units. Set on
+    /// a category axis, `crosses_at(50.0)` puts it where the value axis reads
+    /// 50; set on a value axis it is a position on the category axis (the
+    /// first category is 1). Excludes `crosses_max`. On a secondary value
+    /// axis it replaces the default of crossing at the far end.
+    pub crosses_at: Option<f64>,
     /// Draw a date axis with this unit. Category axes of bar, column, line and
     /// area charts only.
     pub date_unit: Option<DateUnit>,
@@ -995,6 +1001,7 @@ impl Default for Axis {
             title_style: None,
             label_style: None,
             crosses_max: false,
+            crosses_at: None,
             date_unit: None,
             major_time_unit: None,
             minor_time_unit: None,
@@ -1127,6 +1134,14 @@ impl Axis {
     #[must_use]
     pub fn crosses_max(mut self, on: bool) -> Self {
         self.crosses_max = on;
+        self
+    }
+
+    /// Crosses the other axis at `value`, in that axis's units; see
+    /// [`Axis::crosses_at`](struct.Axis.html#structfield.crosses_at).
+    #[must_use]
+    pub fn crosses_at(mut self, value: f64) -> Self {
+        self.crosses_at = Some(value);
         self
     }
 
