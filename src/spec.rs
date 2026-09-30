@@ -855,6 +855,53 @@ impl TickMark {
     }
 }
 
+/// How a value axis scales its tick labels, e.g. showing 1,500,000 as 1.5 with
+/// a "Millions" caption. The data is unchanged; only the labels are.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum DisplayUnit {
+    /// Divide by 100.
+    Hundreds,
+    /// Divide by 1,000.
+    Thousands,
+    /// Divide by 10,000.
+    TenThousands,
+    /// Divide by 100,000.
+    HundredThousands,
+    /// Divide by 1,000,000.
+    Millions,
+    /// Divide by 10,000,000.
+    TenMillions,
+    /// Divide by 100,000,000.
+    HundredMillions,
+    /// Divide by 1,000,000,000.
+    Billions,
+    /// Divide by 1,000,000,000,000.
+    Trillions,
+    /// Divide by this number, which must be finite and above 0.
+    Custom(f64),
+}
+
+impl DisplayUnit {
+    pub(crate) fn element(self) -> String {
+        let built_in = |name: &str| format!(r#"<c:builtInUnit val="{name}"/>"#);
+        match self {
+            DisplayUnit::Hundreds => built_in("hundreds"),
+            DisplayUnit::Thousands => built_in("thousands"),
+            DisplayUnit::TenThousands => built_in("tenThousands"),
+            DisplayUnit::HundredThousands => built_in("hundredThousands"),
+            DisplayUnit::Millions => built_in("millions"),
+            DisplayUnit::TenMillions => built_in("tenMillions"),
+            DisplayUnit::HundredMillions => built_in("hundredMillions"),
+            DisplayUnit::Billions => built_in("billions"),
+            DisplayUnit::Trillions => built_in("trillions"),
+            DisplayUnit::Custom(divisor) => format!(r#"<c:custUnit val="{divisor}"/>"#),
+        }
+    }
+}
+
 /// The unit of a date axis, finest first: `Days < Months < Years`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -967,6 +1014,12 @@ pub struct Axis {
     /// first category is 1). Excludes `crosses_max`. On a secondary value
     /// axis it replaces the default of crossing at the far end.
     pub crosses_at: Option<f64>,
+    /// Scale the tick labels, e.g. to thousands. Value axes, and the x axis of
+    /// a scatter or bubble chart.
+    pub display_unit: Option<DisplayUnit>,
+    /// Print the Excel caption for `display_unit` ("Thousands") on the axis.
+    /// Needs `display_unit`.
+    pub display_unit_label: bool,
     /// Draw a date axis with this unit. Category axes of bar, column, line and
     /// area charts only.
     pub date_unit: Option<DateUnit>,
@@ -1002,6 +1055,8 @@ impl Default for Axis {
             label_style: None,
             crosses_max: false,
             crosses_at: None,
+            display_unit: None,
+            display_unit_label: false,
             date_unit: None,
             major_time_unit: None,
             minor_time_unit: None,
@@ -1134,6 +1189,20 @@ impl Axis {
     #[must_use]
     pub fn crosses_max(mut self, on: bool) -> Self {
         self.crosses_max = on;
+        self
+    }
+
+    /// Scales the tick labels by `unit`, e.g. [`DisplayUnit::Thousands`].
+    #[must_use]
+    pub fn display_units(mut self, unit: DisplayUnit) -> Self {
+        self.display_unit = Some(unit);
+        self
+    }
+
+    /// Shows or hides the caption Excel prints beside a scaled axis.
+    #[must_use]
+    pub fn display_units_label(mut self, show: bool) -> Self {
+        self.display_unit_label = show;
         self
     }
 
