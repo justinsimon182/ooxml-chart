@@ -2009,6 +2009,11 @@ impl LabelPart {
 ///
 /// Combining is limited to what Excel draws on one shared category axis:
 /// column, line and area kinds, with the same orientation as the chart's own.
+/// A scatter (`Scatter` or `ScatterLines`) can also be added to a column, line
+/// or area chart: on the primary axes its x values are positions along the
+/// category axis, and on the secondary axis it gets its own pair of value axes.
+/// A scatter cannot share a secondary axis with another kind, cannot be the
+/// chart the others are added to, and bubble charts cannot be combined at all.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]

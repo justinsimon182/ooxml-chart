@@ -30,6 +30,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Scatter combined with column, line and area: add a `Scatter` or `ScatterLines`
+  `Plot` to such a chart, on the primary axes (x values are positions on the
+  category axis) or on the secondary axis (its own pair of value axes, x hidden,
+  y on the right). Refused: a scatter and another kind on one secondary axis, a
+  scatter as the base chart, a data table alongside a scatter, and bubble in any
+  combination.
 - Drawing packaging helpers: `DRAWING_CONTENT_TYPE`, `DRAWING_RELATIONSHIP_TYPE`,
   `drawing_content_types_override`, `worksheet_drawing_relationship` and
   `worksheet_drawing_element`, so a caller can register a drawing and link it

@@ -381,7 +381,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             } | Family::Line
                 | Family::Area { .. }
         );
-        if !takes_table {
+        if !takes_table || plots.iter().any(|plot| plot.family == Family::Scatter) {
             return unsupported(format!("a data table on {:?}", primary.kind));
         }
         if let Some(style) = &table.style {
@@ -400,20 +400,37 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
 
     // Combinations.
     if !spec.extra_plots.is_empty() {
-        for plot in plots {
-            if !matches!(
+        if plots.iter().any(|plot| plot.family == Family::Bubble) {
+            return unsupported("combining a bubble chart with other kinds".to_string());
+        }
+        for (index, plot) in plots.iter().enumerate() {
+            let shares_categories = matches!(
                 plot.family,
                 Family::Bar {
                     horizontal: false,
                     ..
                 } | Family::Line
                     | Family::Area { .. }
-            ) {
+            );
+            // A scatter joins column, line and area as an added plot; it
+            // cannot be the chart the others are added to.
+            let joins_as_scatter = index > 0 && plot.family == Family::Scatter;
+            if !(shares_categories || joins_as_scatter) {
                 return unsupported(format!(
-                    "combining {:?}: only column, line and area kinds share a category axis",
+                    "combining {:?}: column, line and area share a category axis, and a scatter can be added to them",
                     plot.kind
                 ));
             }
+        }
+        // A secondary scatter has two value axes; anything else there has a
+        // category axis, and the pair cannot be both.
+        let secondary = || plots.iter().skip(1).filter(|plot| plot.secondary);
+        if secondary().any(|plot| plot.family == Family::Scatter)
+            && secondary().any(|plot| plot.family != Family::Scatter)
+        {
+            return unsupported(
+                "a scatter and another kind on the same secondary axis".to_string(),
+            );
         }
     }
     if plots.iter().skip(1).any(|plot| plot.secondary) {
@@ -1817,6 +1834,15 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
     ));
 
     if plots.iter().any(|plot| plot.secondary) {
+        // A secondary scatter takes two value axes, x along the bottom.
+        let (secondary_first, secondary_between) = if plots
+            .iter()
+            .any(|plot| plot.secondary && plot.family == Family::Scatter)
+        {
+            (AxisKind::Value, "midCat")
+        } else {
+            (first, cross_between)
+        };
         // The right-hand value axis crosses the (hidden) secondary category
         // axis at its far end, which is what puts it on the right.
         let mut value_axis = spec.secondary_value_axis.clone();
@@ -1827,17 +1853,17 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
                 id: SECONDARY_VALUE_AXIS_ID,
                 cross_id: SECONDARY_CATEGORY_AXIS_ID,
                 position: "r",
-                cross_between,
+                cross_between: secondary_between,
             },
             &value_axis,
         ));
         out.push_str(&axis_xml(
             &AxisPlacement {
-                kind: first,
+                kind: secondary_first,
                 id: SECONDARY_CATEGORY_AXIS_ID,
                 cross_id: SECONDARY_VALUE_AXIS_ID,
                 position: category_pos,
-                cross_between,
+                cross_between: secondary_between,
             },
             &Axis {
                 date_unit: spec.category_axis.date_unit,
