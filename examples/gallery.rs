@@ -4,10 +4,10 @@
 //! output between versions or feeding another tool's validator.
 
 use ooxml_chart::{
-    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, DisplayUnit,
-    ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition, MarkerSymbol, Plot,
-    PointFormat, PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, Trendline,
-    TrendlineKind,
+    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DataTable, DateUnit,
+    DisplayUnit, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition,
+    MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
+    TickLabels, Trendline, TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -403,6 +403,14 @@ fn main() {
                 .category_axis(Axis::default().line("8E0DD1").line_width(2.5))
                 .value_axis(Axis::default().no_line())
                 .series(series("North", "B", "0090B2")),
+        ),
+        (
+            "data_table",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Data table")
+                .data_table(DataTable::new().vertical_borders(false))
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
         ),
         (
             "date_axis",

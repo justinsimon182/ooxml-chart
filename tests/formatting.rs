@@ -1639,3 +1639,98 @@ mod axis_line {
         }
     }
 }
+
+// --- Data table ---------------------------------------------------------------------
+
+mod data_table {
+    use super::*;
+    use ooxml_chart::DataTable;
+
+    fn chart(kind: ChartKind, table: DataTable) -> Result<String, ChartError> {
+        ChartSpec::new(kind)
+            .data_table(table)
+            .series(series())
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+    }
+
+    #[test]
+    fn a_default_table_follows_the_axes_and_precedes_the_plot_area_shape() {
+        let xml = ChartSpec::new(ChartKind::ColumnClustered)
+            .data_table(DataTable::new())
+            .plot_area(AreaStyle::new().fill("F8F6F0"))
+            .series(series())
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+            .expect("a chart");
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"</c:valAx><c:dTable><c:showHorzBorder val="1"/><c:showVertBorder val="1"/><c:showOutline val="1"/><c:showKeys val="1"/></c:dTable><c:spPr>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn switches_write_zero_and_a_style_writes_text_properties() {
+        let xml = chart(
+            ChartKind::Line,
+            DataTable::new()
+                .horizontal_borders(false)
+                .vertical_borders(false)
+                .outline(false)
+                .legend_keys(false)
+                .style(TextStyle::new().size(9.0)),
+        )
+        .expect("a chart");
+        assert!(
+            xml.contains(r#"<c:showHorzBorder val="0"/><c:showVertBorder val="0"/><c:showOutline val="0"/><c:showKeys val="0"/><c:txPr>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn column_line_and_area_take_a_table() {
+        for kind in [
+            ChartKind::ColumnClustered,
+            ChartKind::ColumnStacked,
+            ChartKind::Line,
+            ChartKind::LineMarkers,
+            ChartKind::Area,
+        ] {
+            chart(kind, DataTable::new()).unwrap_or_else(|e| panic!("{kind:?}: {e}"));
+        }
+    }
+
+    #[test]
+    fn other_kinds_are_refused() {
+        for kind in [
+            ChartKind::BarClustered,
+            ChartKind::Scatter,
+            ChartKind::Pie,
+            ChartKind::Doughnut,
+        ] {
+            assert!(
+                matches!(
+                    chart(kind, DataTable::new()),
+                    Err(ChartError::Unsupported { .. })
+                ),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_table_writes_no_element() {
+        let xml = render(ChartSpec::new(ChartKind::Line).series(series()));
+        assert!(!xml.contains("dTable"), "{xml}");
+    }
+
+    #[test]
+    fn a_bad_font_in_the_table_is_refused() {
+        let result = chart(
+            ChartKind::Line,
+            DataTable::new().style(TextStyle::new().size(f64::NAN)),
+        );
+        assert!(result.is_err());
+    }
+}
