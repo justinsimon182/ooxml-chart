@@ -2268,3 +2268,52 @@ mod reference_syntax {
             .expect("quoted names are fine");
     }
 }
+
+// --- Series-name cache --------------------------------------------------------------
+
+mod name_cache {
+    use super::*;
+
+    fn named(kind: ChartKind) -> ChartSpec {
+        ChartSpec::new(kind).series(
+            Series::new(SeriesName::Reference("'S'!$B$1".into()), "'S'!$B$2:$B$5")
+                .with_cached_name("North & <South>"),
+        )
+    }
+
+    #[test]
+    fn a_cached_name_is_a_one_point_string_cache() {
+        let xml = render(named(ChartKind::Line));
+        assert!(
+            xml.contains("<c:tx><c:strRef><c:f>&#39;S&#39;!$B$1</c:f><c:strCache><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>North &amp; &lt;South&gt;</c:v></c:pt></c:strCache></c:strRef></c:tx>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn no_cache_by_default() {
+        let xml = render(ChartSpec::new(ChartKind::Line).series(Series::new(
+            SeriesName::Reference("'S'!$B$1".into()),
+            "'S'!$B$2:$B$5",
+        )));
+        assert!(
+            xml.contains("<c:tx><c:strRef><c:f>&#39;S&#39;!$B$1</c:f></c:strRef></c:tx>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn works_on_pie_and_scatter() {
+        for kind in [ChartKind::Pie, ChartKind::Scatter] {
+            assert!(render(named(kind)).contains("<c:strCache>"), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_cache_on_a_literal_name_is_refused() {
+        let result = ChartSpec::new(ChartKind::Line)
+            .series(series().with_cached_name("x"))
+            .render();
+        assert!(matches!(result, Err(ChartError::Unsupported { .. })));
+    }
+}

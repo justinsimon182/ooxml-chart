@@ -717,8 +717,14 @@ fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
 /// Colours, stop counts and angles of a fill or line.
 /// The syntax of every reference a series holds.
 fn check_series_references(series: &Series) -> Result<(), ChartError> {
-    if let SeriesName::Reference(reference) = &series.name {
-        reference::check(reference)?;
+    match (&series.name, &series.name_cache) {
+        (SeriesName::Reference(reference), _) => reference::check(reference)?,
+        (SeriesName::Literal(_), Some(_)) => {
+            return Err(ChartError::Unsupported {
+                what: "a name cache on a literal series name".to_string(),
+            });
+        }
+        (SeriesName::Literal(_), None) => {}
     }
     let optional = [
         &series.categories,
@@ -1178,10 +1184,17 @@ fn series_xml(
 ) -> String {
     let name = match &series.name {
         SeriesName::Literal(text) => format!("<c:tx><c:v>{}</c:v></c:tx>", escape(text)),
-        SeriesName::Reference(reference) => format!(
-            "<c:tx><c:strRef><c:f>{}</c:f></c:strRef></c:tx>",
-            escape(reference)
-        ),
+        SeriesName::Reference(reference) => {
+            let cache = series
+                .name_cache
+                .as_ref()
+                .map(|text| str_cache(std::slice::from_ref(text)))
+                .unwrap_or_default();
+            format!(
+                "<c:tx><c:strRef><c:f>{}</c:f>{cache}</c:strRef></c:tx>",
+                escape(reference)
+            )
+        }
     };
     let shape = shape_xml(plot, series);
     let points = format!(

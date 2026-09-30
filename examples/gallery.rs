@@ -489,6 +489,14 @@ fn main() {
                 ),
         ),
         (
+            "series_name_cache",
+            ChartSpec::new(ChartKind::Line).title("Cached name").series(
+                Series::new(SeriesName::Reference("'S'!$B$1".into()), "'S'!$B$2:$B$5")
+                    .with_categories("'S'!$A$2:$A$5")
+                    .with_cached_name("North"),
+            ),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")
