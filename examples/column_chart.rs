@@ -7,11 +7,13 @@ use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
 fn main() {
     let part = ChartSpec::new(ChartKind::ColumnClustered)
         .title("Monthly totals")
-        .series(Series {
-            name: SeriesName::Literal("Series A".to_string()),
-            categories: Some("'Sheet1'!$A$3:$A$38".to_string()),
-            values: "'Sheet1'!$C$3:$C$38".to_string(),
-        })
+        .series(
+            Series::new(
+                SeriesName::Literal("Series A".to_string()),
+                "'Sheet1'!$C$3:$C$38",
+            )
+            .with_categories("'Sheet1'!$A$3:$A$38"),
+        )
         .render()
         .expect("a chart");
 

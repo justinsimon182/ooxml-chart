@@ -11,5 +11,17 @@ keywords = ["ooxml", "xlsx", "excel", "chart", "spreadsheet"]
 categories = ["encoding"]
 readme = "README.md"
 
+[features]
+# Derive `Serialize`/`Deserialize` for the spec types, so a chart can be
+# declared in JSON, TOML or YAML rather than in code.
+serde = ["dep:serde"]
+
 [dependencies]
 thiserror = "2"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features = true
