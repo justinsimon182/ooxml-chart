@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Display units: `Axis::display_units` (`DisplayUnit`, built-in or custom
+  divisor) and `display_units_label` write `<c:dispUnits>` on value axes and on
+  a scatter or bubble x axis. Refused on other category axes, for a
+  non-positive custom divisor, and for a label with no unit.
 - `Axis::crosses_at` writes `<c:crossesAt>`: where an axis crosses the other,
   in the other axis's units. Refused with `crosses_max`, when not finite, and
   at zero or below against a logarithmic axis.

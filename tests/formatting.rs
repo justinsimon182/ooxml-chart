@@ -1348,3 +1348,125 @@ mod crosses_at {
         assert!(xml.contains(r#"<c:crossesAt val="10"/>"#), "{xml}");
     }
 }
+
+// --- Display units ---------------------------------------------------------------
+
+mod display_units {
+    use super::*;
+    use ooxml_chart::DisplayUnit;
+
+    fn chart(kind: ChartKind, category: Axis, value: Axis) -> Result<String, ChartError> {
+        ChartSpec::new(kind)
+            .category_axis(category)
+            .value_axis(value)
+            .series(series())
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+    }
+
+    #[test]
+    fn a_built_in_unit_follows_the_tick_units_and_ends_the_axis() {
+        let xml = chart(
+            ChartKind::ColumnClustered,
+            Axis::default(),
+            Axis::default()
+                .major_unit(5.0)
+                .display_units(DisplayUnit::Thousands),
+        )
+        .expect("a chart");
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<c:crossBetween val="between"/><c:majorUnit val="5"/><c:dispUnits><c:builtInUnit val="thousands"/></c:dispUnits></c:valAx>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn every_built_in_unit_has_its_schema_name() {
+        for (unit, name) in [
+            (DisplayUnit::Hundreds, "hundreds"),
+            (DisplayUnit::TenThousands, "tenThousands"),
+            (DisplayUnit::HundredThousands, "hundredThousands"),
+            (DisplayUnit::Millions, "millions"),
+            (DisplayUnit::TenMillions, "tenMillions"),
+            (DisplayUnit::HundredMillions, "hundredMillions"),
+            (DisplayUnit::Billions, "billions"),
+            (DisplayUnit::Trillions, "trillions"),
+        ] {
+            let xml = chart(
+                ChartKind::Line,
+                Axis::default(),
+                Axis::default().display_units(unit),
+            )
+            .expect("a chart");
+            assert!(
+                xml.contains(&format!(r#"<c:builtInUnit val="{name}"/>"#)),
+                "{name}: {xml}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_custom_divisor_and_the_caption_are_written() {
+        let xml = chart(
+            ChartKind::Line,
+            Axis::default(),
+            Axis::default()
+                .display_units(DisplayUnit::Custom(250.0))
+                .display_units_label(true),
+        )
+        .expect("a chart");
+        assert!(
+            xml.contains(r#"<c:dispUnits><c:custUnit val="250"/><c:dispUnitsLbl/></c:dispUnits>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_scatter_x_axis_takes_display_units() {
+        let xml = chart(
+            ChartKind::Scatter,
+            Axis::default().display_units(DisplayUnit::Millions),
+            Axis::default(),
+        )
+        .expect("a chart");
+        assert!(xml.contains(r#"<c:builtInUnit val="millions"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn a_category_axis_cannot() {
+        let error = chart(
+            ChartKind::ColumnClustered,
+            Axis::default().display_units(DisplayUnit::Thousands),
+            Axis::default(),
+        );
+        assert!(
+            matches!(error, Err(ChartError::Unsupported { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_bad_divisor_or_an_orphan_caption_is_refused() {
+        for bad in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+            let error = chart(
+                ChartKind::Line,
+                Axis::default(),
+                Axis::default().display_units(DisplayUnit::Custom(bad)),
+            );
+            assert!(
+                matches!(error, Err(ChartError::InvalidAxisRange { .. })),
+                "{bad}: {error:?}"
+            );
+        }
+        let error = chart(
+            ChartKind::Line,
+            Axis::default(),
+            Axis::default().display_units_label(true),
+        );
+        assert!(
+            matches!(error, Err(ChartError::InvalidAxisRange { .. })),
+            "{error:?}"
+        );
+    }
+}

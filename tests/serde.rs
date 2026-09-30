@@ -2,9 +2,9 @@
 #![cfg(feature = "serde")]
 
 use ooxml_chart::{
-    Axis, ChartKind, ChartSpec, DataLabels, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues,
-    Layout, LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Series, SeriesName,
-    TextStyle,
+    Axis, ChartKind, ChartSpec, DataLabels, DisplayUnit, ErrorAmount, ErrorBarSide, ErrorBars,
+    ErrorValues, Layout, LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Series,
+    SeriesName, TextStyle,
 };
 
 const TERSE: &str = r#"{
@@ -150,6 +150,23 @@ fn crosses_at_survives_a_round_trip() {
     let json = serde_json::to_string(&spec).expect("serialises");
     let back: ChartSpec = serde_json::from_str(&json).expect("parses");
     assert_eq!(back, spec);
+}
+
+#[test]
+fn display_units_survive_a_round_trip() {
+    let spec = ChartSpec::new(ChartKind::Line)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
+        .value_axis(
+            Axis::default()
+                .display_units(DisplayUnit::Custom(25.0))
+                .display_units_label(true),
+        );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+    let terse = r#"{"kind":"line","series":[{"name":{"literal":"A"},"values":"S!$B$2:$B$5"}],"value_axis":{"display_unit":"millions"}}"#;
+    let parsed: ChartSpec = serde_json::from_str(terse).expect("parses");
+    assert!(parsed.render().is_ok());
 }
 
 #[test]

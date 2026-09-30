@@ -4,9 +4,9 @@
 //! output between versions or feeding another tool's validator.
 
 use ooxml_chart::{
-    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, ErrorAmount,
-    ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition, MarkerSymbol, Plot, PointFormat,
-    PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, DisplayUnit,
+    ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition, MarkerSymbol, Plot,
+    PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -363,6 +363,25 @@ fn main() {
                 .category_axis(Axis::default().crosses_at(5.0))
                 .value_axis(Axis::default().crosses_at(2.0))
                 .series(series("North", "B", "8E0DD1")),
+        ),
+        (
+            "display_units",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Display units")
+                .value_axis(
+                    Axis::default()
+                        .display_units(DisplayUnit::Thousands)
+                        .display_units_label(true),
+                )
+                .series(series("North", "B", "8E0DD1")),
+        ),
+        (
+            "display_units_scatter",
+            ChartSpec::new(ChartKind::Scatter)
+                .title("Display units")
+                .category_axis(Axis::default().display_units(DisplayUnit::Custom(250.0)))
+                .value_axis(Axis::default().display_units(DisplayUnit::Millions))
+                .series(series("North", "B", "0090B2")),
         ),
         (
             "date_axis",

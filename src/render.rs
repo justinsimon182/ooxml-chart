@@ -12,9 +12,9 @@
 use crate::error::ChartError;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DateUnit,
-    ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout, MarkerSymbol, Paint,
-    Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline,
-    TrendlineKind,
+    DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
+    MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels,
+    Trendline, TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -312,6 +312,13 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
         }
         check_axis(&spec.category_axis)?;
         check_axis(&spec.value_axis)?;
+        let has_x_values = matches!(primary.family, Family::Scatter | Family::Bubble);
+        if spec.category_axis.display_unit.is_some() && !has_x_values {
+            return unsupported(format!(
+                "display units on the category axis of {:?}",
+                primary.kind
+            ));
+        }
         // A logarithmic axis has no zero or negative positions to cross at.
         for (crossing, other) in [
             (&spec.category_axis, &spec.value_axis),
@@ -647,6 +654,14 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
         return reason("a tick unit is not positive");
     }
     check_date_ticks(axis)?;
+    if let Some(DisplayUnit::Custom(divisor)) = axis.display_unit {
+        if !divisor.is_finite() || divisor <= 0.0 {
+            return reason("a custom display unit is not a positive number");
+        }
+    }
+    if axis.display_unit_label && axis.display_unit.is_none() {
+        return reason("a display unit label needs a display unit");
+    }
     if let Some(at) = axis.crosses_at {
         if !at.is_finite() {
             return reason("a crossing value is not finite");
@@ -1536,7 +1551,18 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
                 .minor_unit
                 .map(|v| format!(r#"<c:minorUnit val="{v}"/>"#))
                 .unwrap_or_default();
-            format!(r#"<c:crossBetween val="{cross_between}"/>{major}{minor}"#)
+            let display = axis
+                .display_unit
+                .map(|unit| {
+                    let label = if axis.display_unit_label {
+                        "<c:dispUnitsLbl/>"
+                    } else {
+                        ""
+                    };
+                    format!("<c:dispUnits>{}{label}</c:dispUnits>", unit.element())
+                })
+                .unwrap_or_default();
+            format!(r#"<c:crossBetween val="{cross_between}"/>{major}{minor}{display}"#)
         }
     };
     format!(
