@@ -78,13 +78,30 @@ does not read, write, or zip `.xlsx` packages.
 | Validate reference syntax (`Sheet!$A$1:$B$2`) | **Open** — must not reject valid quoting |
 | Round-trip check against a real Excel install | **Open** — no Excel in CI; see below |
 
-## Verification gap
+## Verification
 
-Output is checked by unit tests that pin the emitted XML, a well-formedness
-check on every rendered part, and a load through `openpyxl`'s chart reader for
-the gallery. None of that is Excel. The schema element order was written from
-ECMA-376; the first time a chart is opened in a real Excel and repaired is the
-signal to add a test for what it complained about.
+Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
+date axis, and one drawing per anchor type â€” 42 in all) validates against the
+ECMA-376 transitional schemas, including element order:
+
+```sh
+cargo run --example gallery -- out
+python scripts/validate_gallery.py out path/to/ISO-IEC29500-4_2016
+```
+
+The schemas are not vendored, so this is a manual step and not in CI.
+
+Schema-valid is not the same as Excel-accepted. Excel also enforces rules the
+XSD cannot express â€” which label positions suit which chart kind, which
+combinations exist â€” and those are encoded and tested here from documented
+behaviour, not from a live Excel. The first time a chart is repaired by a real
+Excel is the signal to add a test for what it complained about.
+
+| Item | Status |
+| --- | --- |
+| Schema validation of the gallery | Done â€” manual script |
+| Schema validation in CI | **Open** â€” needs the schemas vendored or fetched |
+| Round-trip through a real Excel install | **Open** |
 
 ## Ground rules for new features
 

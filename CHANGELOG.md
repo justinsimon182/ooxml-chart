@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `scripts/validate_gallery.py` validates the gallery example's output against
+  the ECMA-376 schemas; the gallery now also writes a fully-optioned variant of
+  every kind and one drawing per anchor type.
+
 - Combination charts: `Plot` and `ChartSpec::plot` draw column, line and area
   series together, optionally on a second value axis
   (`Plot::on_secondary_axis`, `ChartSpec::secondary_value_axis`).
