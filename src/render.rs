@@ -11,8 +11,8 @@
 
 use crate::error::ChartError;
 use crate::spec::{
-    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DateUnit,
-    DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
+    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
+    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
     MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
     TickLabels, Trendline, TrendlineKind,
 };
@@ -167,6 +167,22 @@ fn check_position(position: &Position) -> Result<(), ChartError> {
     Ok(())
 }
 
+fn data_table_xml(table: &DataTable) -> String {
+    let flag = |tag: &str, on: bool| format!(r#"<c:{tag} val="{}"/>"#, i32::from(on));
+    format!(
+        "<c:dTable>{}{}{}{}{}</c:dTable>",
+        flag("showHorzBorder", table.horizontal_borders),
+        flag("showVertBorder", table.vertical_borders),
+        flag("showOutline", table.outline),
+        flag("showKeys", table.legend_keys),
+        table
+            .style
+            .as_ref()
+            .map(|style| tx_pr_xml(Some(style), None))
+            .unwrap_or_default(),
+    )
+}
+
 fn check_layout(layout: &Layout) -> Result<(), ChartError> {
     let invalid = |reason| Err(ChartError::InvalidLayout { reason });
     let numbers = [layout.x, layout.y, layout.width, layout.height];
@@ -224,6 +240,9 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     }
     if spec.kind.has_axes() {
         out.push_str(&axes_xml(spec, &plots));
+    }
+    if let Some(table) = &spec.data_table {
+        out.push_str(&data_table_xml(table));
     }
     if let Some(style) = &spec.plot_area {
         out.push_str(&sp_pr_xml(style));
@@ -285,6 +304,23 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
         .flatten()
     {
         check_layout(layout)?;
+    }
+    if let Some(table) = &spec.data_table {
+        // Excel offers a data table for column, line and area charts only.
+        let takes_table = matches!(
+            primary.family,
+            Family::Bar {
+                horizontal: false,
+                ..
+            } | Family::Line
+                | Family::Area { .. }
+        );
+        if !takes_table {
+            return unsupported(format!("a data table on {:?}", primary.kind));
+        }
+        if let Some(style) = &table.style {
+            check_text_style(style)?;
+        }
     }
     if let Some(position) = &spec.title_position {
         if spec.title.is_none() {

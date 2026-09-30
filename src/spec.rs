@@ -618,6 +618,83 @@ impl ErrorBars {
     }
 }
 
+/// A data table under the plot area: the series values in a grid that lines
+/// up with the categories.
+///
+/// Every part is on by default, as Excel draws it. Only column, line and area
+/// charts take one; set with [`ChartSpec::data_table`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct DataTable {
+    /// Horizontal lines between the rows.
+    pub horizontal_borders: bool,
+    /// Vertical lines between the columns.
+    pub vertical_borders: bool,
+    /// A border around the whole table.
+    pub outline: bool,
+    /// Legend keys (series colour swatches) beside the row names.
+    pub legend_keys: bool,
+    /// Font for the table text. `None` leaves Excel's default.
+    pub style: Option<TextStyle>,
+}
+
+impl Default for DataTable {
+    fn default() -> Self {
+        Self {
+            horizontal_borders: true,
+            vertical_borders: true,
+            outline: true,
+            legend_keys: true,
+            style: None,
+        }
+    }
+}
+
+impl DataTable {
+    /// A table with every border and the legend keys; chain the setters.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Shows or hides the horizontal lines between rows.
+    #[must_use]
+    pub fn horizontal_borders(mut self, show: bool) -> Self {
+        self.horizontal_borders = show;
+        self
+    }
+
+    /// Shows or hides the vertical lines between columns.
+    #[must_use]
+    pub fn vertical_borders(mut self, show: bool) -> Self {
+        self.vertical_borders = show;
+        self
+    }
+
+    /// Shows or hides the border around the table.
+    #[must_use]
+    pub fn outline(mut self, show: bool) -> Self {
+        self.outline = show;
+        self
+    }
+
+    /// Shows or hides the legend keys beside the row names.
+    #[must_use]
+    pub fn legend_keys(mut self, show: bool) -> Self {
+        self.legend_keys = show;
+        self
+    }
+
+    /// Sets the table font.
+    #[must_use]
+    pub fn style(mut self, style: TextStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
 /// A manual position for a chart title or an axis title.
 ///
 /// `x` and `y` are fractions of the whole chart, measured from its top-left
@@ -1587,6 +1664,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title_position: Option<Position>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) data_table: Option<DataTable>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) text_style: Option<TextStyle>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) legend_overlay: bool,
@@ -1626,6 +1705,7 @@ impl ChartSpec {
             first_slice_angle: 0,
             title_style: None,
             title_position: None,
+            data_table: None,
             text_style: None,
             legend_overlay: false,
             legend_style: None,
@@ -1761,6 +1841,15 @@ impl ChartSpec {
     #[must_use]
     pub fn plot_area(mut self, style: AreaStyle) -> Self {
         self.plot_area = Some(style);
+        self
+    }
+
+    /// Shows a data table under the plot area; see [`DataTable`]. Only column,
+    /// line and area charts take one; any other kind is refused at render
+    /// time.
+    #[must_use]
+    pub fn data_table(mut self, table: DataTable) -> Self {
+        self.data_table = Some(table);
         self
     }
 

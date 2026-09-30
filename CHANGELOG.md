@@ -30,6 +30,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Data table: `ChartSpec::data_table` (`DataTable`: borders, outline, legend
+  keys, font) writes `<c:dTable>` under the plot area of column, line and area
+  charts. Other kinds are refused.
 - Axis line styling: `Axis::line`, `no_line` and `line_width` write the axis
   `<c:spPr>` outline (colour, hidden, width). Bad colours and widths are
   refused.
