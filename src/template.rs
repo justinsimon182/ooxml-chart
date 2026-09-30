@@ -43,6 +43,7 @@
 use crate::error::ChartError;
 use crate::spec::ChartPart;
 use crate::xml::escape;
+use std::collections::BTreeMap;
 
 /// A byte range in the template to be replaced with different text.
 ///
@@ -77,6 +78,14 @@ pub struct TemplateChart {
     title: Option<TitleSpans>,
     replacements: Vec<String>,
     new_title: Option<String>,
+    /// One entry per axis element in document order; `None` when that axis
+    /// has no plain-text title this crate can replace.
+    axes: Vec<Option<TitleSpans>>,
+    /// One entry per `<c:ser>` in document order; `None` when its name is not
+    /// a literal `<c:tx><c:v>`.
+    series_names: Vec<Option<Span>>,
+    new_axis_titles: BTreeMap<usize, String>,
+    new_series_names: BTreeMap<usize, String>,
 }
 
 impl TemplateChart {
@@ -108,10 +117,73 @@ impl TemplateChart {
         Ok(Self {
             references: reference_spans(part)?,
             title: title_spans(part, prefix),
+            axes: axis_title_spans(part, prefix)?,
+            series_names: series_name_spans(part, prefix)?,
             part: part.to_vec(),
             replacements: Vec::new(),
             new_title: None,
+            new_axis_titles: BTreeMap::new(),
+            new_series_names: BTreeMap::new(),
         })
+    }
+
+    /// How many axis elements (`catAx`, `valAx`, `dateAx`, `serAx`) the
+    /// template holds, in document order. Valid indexes for
+    /// [`TemplateChart::with_axis_title`] are `0..axis_count()`.
+    #[must_use]
+    pub fn axis_count(&self) -> usize {
+        self.axes.len()
+    }
+
+    /// How many `<c:ser>` elements the template holds, in document order
+    /// across every plot. Valid indexes for [`TemplateChart::with_series_name`]
+    /// are `0..series_count()`.
+    #[must_use]
+    pub fn series_count(&self) -> usize {
+        self.series_names.len()
+    }
+
+    /// Replaces the title text of one axis.
+    ///
+    /// `axis` counts axis elements in document order. Excel writes a category
+    /// axis then a value axis, so `0` and `1` are those for a one-plot chart;
+    /// a scatter chart has two value axes, x then y; a chart with a secondary
+    /// axis lists the secondary pair after the primary one.
+    ///
+    /// Multi-run titles collapse to one run, exactly as with
+    /// [`TemplateChart::with_title`]. Calling this again for the same axis
+    /// replaces the earlier text.
+    ///
+    /// # Errors deferred to `render`
+    ///
+    /// [`ChartError::TemplateIndexOutOfRange`] if `axis >= axis_count()`;
+    /// [`ChartError::NoAxisTitleInTemplate`] if that axis has no plain-text
+    /// title. A template axis with no title is never given one: the element
+    /// would have to be invented, and its position in the schema order is the
+    /// kind of thing this module refuses to guess.
+    #[must_use]
+    pub fn with_axis_title(mut self, axis: usize, text: impl Into<String>) -> Self {
+        self.new_axis_titles.insert(axis, text.into());
+        self
+    }
+
+    /// Replaces the literal name of one series.
+    ///
+    /// `series` counts `<c:ser>` elements in document order across every
+    /// plot. Only a literal name (`<c:tx><c:v>…</c:v></c:tx>`) can be swapped
+    /// here. A name bound to a cell (`<c:tx><c:strRef>`) is changed through
+    /// [`TemplateChart::with_references`]; its cached text is left as the
+    /// template had it, and Excel refreshes it on open.
+    ///
+    /// # Errors deferred to `render`
+    ///
+    /// [`ChartError::TemplateIndexOutOfRange`] if `series >= series_count()`;
+    /// [`ChartError::NoSeriesNameInTemplate`] if that series' name is not a
+    /// literal.
+    #[must_use]
+    pub fn with_series_name(mut self, series: usize, text: impl Into<String>) -> Self {
+        self.new_series_names.insert(series, text.into());
+        self
     }
 
     /// How many live reference elements the byte scanner found in the
@@ -198,13 +270,33 @@ impl TemplateChart {
             .map(|(span, text)| (*span, escape(text)))
             .collect();
         if let (Some(spans), Some(text)) = (&self.title, self.new_title.as_ref()) {
-            edits.push((spans.text, escape(text)));
-            // Every run after the first is deleted outright, not just its
-            // text: leaving the `<a:r>` tags behind would still be a second,
-            // empty run, and Excel is not obliged to render that gracefully.
-            for run in &spans.extra_runs {
-                edits.push((*run, String::new()));
-            }
+            push_title_edits(&mut edits, spans, text);
+        }
+        for (&axis, text) in &self.new_axis_titles {
+            let slot = self
+                .axes
+                .get(axis)
+                .ok_or(ChartError::TemplateIndexOutOfRange {
+                    kind: "axis",
+                    index: axis,
+                    count: self.axes.len(),
+                })?;
+            let spans = slot
+                .as_ref()
+                .ok_or(ChartError::NoAxisTitleInTemplate { axis })?;
+            push_title_edits(&mut edits, spans, text);
+        }
+        for (&series, text) in &self.new_series_names {
+            let slot =
+                self.series_names
+                    .get(series)
+                    .ok_or(ChartError::TemplateIndexOutOfRange {
+                        kind: "series",
+                        index: series,
+                        count: self.series_names.len(),
+                    })?;
+            let span = slot.ok_or(ChartError::NoSeriesNameInTemplate { series })?;
+            edits.push((span, escape(text)));
         }
         edits.sort_by_key(|(span, _)| span.start);
 
@@ -448,6 +540,13 @@ fn title_spans(part: &[u8], prefix: &[u8]) -> Option<TitleSpans> {
     // empty title.
     let close_rel = find(&part[title_at..], &title_close)?;
     let title_end = title_at + close_rel + title_close.len();
+    text_spans(part, title_at, title_end)
+}
+
+/// Locates the replaceable text inside one title element,
+/// `part[title_at..title_end]`. `None` when it holds no `<a:r>` run with an
+/// `<a:t>` (e.g. it is bound to a cell via `<c:strRef>`).
+fn text_spans(part: &[u8], title_at: usize, title_end: usize) -> Option<TitleSpans> {
     let region = &part[title_at..title_end];
 
     let mut runs = Vec::new();
@@ -469,7 +568,7 @@ fn title_spans(part: &[u8], prefix: &[u8]) -> Option<TitleSpans> {
     let first_run_bytes = &part[first_run.start..first_run.end];
     let t_open_rel = find(first_run_bytes, b"<a:t>")?;
     let t_start = first_run.start + t_open_rel + b"<a:t>".len();
-    let t_close_rel = find(&part[t_start..], b"</a:t>")?;
+    let t_close_rel = find(&part[t_start..first_run.end], b"</a:t>")?;
 
     Some(TitleSpans {
         text: Span {
@@ -478,6 +577,170 @@ fn title_spans(part: &[u8], prefix: &[u8]) -> Option<TitleSpans> {
         },
         extra_runs: runs[1..].to_vec(),
     })
+}
+
+/// Queues the edits that turn a located title into `text`: the first run's
+/// text replaced, every later run deleted outright.
+fn push_title_edits(edits: &mut Vec<(Span, String)>, spans: &TitleSpans, text: &str) {
+    edits.push((spans.text, escape(text)));
+    // Every run after the first is deleted outright, not just its text:
+    // leaving the `<a:r>` tags behind would still be a second, empty run, and
+    // Excel is not obliged to render that gracefully.
+    for run in &spans.extra_runs {
+        edits.push((*run, String::new()));
+    }
+}
+
+/// An element found by [`elements`]: the span of its content (empty for a
+/// self-closing element).
+struct Element {
+    content: Span,
+}
+
+/// Every non-nested element named one of `names` (in the chart namespace's
+/// spelling), in document order, skipping comments and CDATA sections.
+fn elements(part: &[u8], prefix: &[u8], names: &[&[u8]]) -> Result<Vec<Element>, ChartError> {
+    let needles: Vec<Vec<u8>> = names.iter().map(|n| tag(b"<", prefix, n)).collect();
+    let mut found = Vec::new();
+    let mut pos = 0usize;
+    while pos < part.len() {
+        if part[pos] != b'<' {
+            pos += 1;
+            continue;
+        }
+        if part[pos..].starts_with(b"<!--") {
+            let rel = find(&part[pos + 4..], b"-->")
+                .ok_or(ChartError::UnterminatedComment { at: pos })?;
+            pos += 4 + rel + 3;
+            continue;
+        }
+        if part[pos..].starts_with(b"<![CDATA[") {
+            let rel =
+                find(&part[pos + 9..], b"]]>").ok_or(ChartError::UnterminatedCData { at: pos })?;
+            pos += 9 + rel + 3;
+            continue;
+        }
+        let hit = needles.iter().position(|needle| {
+            part[pos..].starts_with(needle) && is_tag_boundary(part.get(pos + needle.len()))
+        });
+        let Some(which) = hit else {
+            pos += 1;
+            continue;
+        };
+        let (tag_end, self_closing) = scan_tag_end(part, pos + needles[which].len())
+            .ok_or(ChartError::UnclosedElement { at: pos })?;
+        if self_closing {
+            found.push(Element {
+                content: Span {
+                    start: tag_end,
+                    end: tag_end,
+                },
+            });
+            pos = tag_end;
+            continue;
+        }
+        let close_name = [prefix, names[which]].concat();
+        let (content_end, close_end) = find_close(part, tag_end, &close_name)
+            .ok_or(ChartError::UnclosedElement { at: pos })?;
+        found.push(Element {
+            content: Span {
+                start: tag_end,
+                end: content_end,
+            },
+        });
+        pos = close_end;
+    }
+    Ok(found)
+}
+
+/// For each axis element in document order, its title if it has a plain-text
+/// one. An axis whose content holds a comment or CDATA section is treated as
+/// having none: a plain scan cannot tell a live title from a commented-out
+/// one, so it refuses rather than guesses.
+fn axis_title_spans(part: &[u8], prefix: &[u8]) -> Result<Vec<Option<TitleSpans>>, ChartError> {
+    let axes = elements(part, prefix, &[b"catAx", b"valAx", b"dateAx", b"serAx"])?;
+    Ok(axes
+        .iter()
+        .map(|axis| {
+            let bytes = &part[axis.content.start..axis.content.end];
+            if find(bytes, b"<!--").is_some() || find(bytes, b"<![CDATA[").is_some() {
+                return None;
+            }
+            let open = find(bytes, &tag(b"<", prefix, b"title>"))?;
+            let close = tag(b"</", prefix, b"title>");
+            let close_rel = find(&bytes[open..], &close)?;
+            text_spans(
+                part,
+                axis.content.start + open,
+                axis.content.start + open + close_rel + close.len(),
+            )
+        })
+        .collect())
+}
+
+/// For each `<c:ser>` in document order, the content span of its literal
+/// name, if it has one.
+fn series_name_spans(part: &[u8], prefix: &[u8]) -> Result<Vec<Option<Span>>, ChartError> {
+    let series = elements(part, prefix, &[b"ser"])?;
+    Ok(series
+        .iter()
+        .map(|ser| literal_series_name(part, prefix, ser.content))
+        .collect())
+}
+
+/// The literal name of one series, `<c:tx><c:v>NAME</c:v></c:tx>`.
+///
+/// `tx` is the third child of `<c:ser>`, after `idx` and `order`, so the
+/// content is walked child by child rather than searched: a search would find
+/// the `<c:tx>` of a data label further down in a series whose name is a cell
+/// reference, and rename that instead.
+fn literal_series_name(part: &[u8], prefix: &[u8], region: Span) -> Option<Span> {
+    let skip_ws = |mut i: usize| {
+        while i < region.end && matches!(part[i], b' ' | b'\t' | b'\r' | b'\n') {
+            i += 1;
+        }
+        i
+    };
+    // Opens the element at `i` if it is `<prefix name`, returning where its
+    // start tag ends and whether it is self-closing.
+    let open = |i: usize, name: &[u8]| {
+        let needle = tag(b"<", prefix, name);
+        if part.get(i..region.end)?.starts_with(&needle)
+            && is_tag_boundary(part.get(i + needle.len()))
+        {
+            scan_tag_end(part, i + needle.len())
+        } else {
+            None
+        }
+    };
+
+    let mut i = skip_ws(region.start);
+    for name in [b"idx".as_slice(), b"order".as_slice()] {
+        let (tag_end, self_closing) = open(i, name)?;
+        i = if self_closing {
+            tag_end
+        } else {
+            find_close(part, tag_end, &[prefix, name].concat())?.1
+        };
+        i = skip_ws(i);
+    }
+    let (tx_end, tx_self_closing) = open(i, b"tx")?;
+    if tx_self_closing {
+        return None;
+    }
+    let i = skip_ws(tx_end);
+    let (v_end, v_self_closing) = open(i, b"v")?;
+    if v_self_closing {
+        return None;
+    }
+    let (content_end, close_end) = find_close(part, v_end, &[prefix, b"v"].concat())?;
+    let after = skip_ws(close_end);
+    part.get(after..region.end)?
+        .starts_with(&tag(b"</", prefix, b"tx"))
+        .then_some(Span {
+            start: v_end,
+            end: content_end,
+        })
 }
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -921,5 +1184,189 @@ mod tests {
                 "refused a consistently spelled part"
             );
         }
+    }
+
+    // --- Axis titles and series names --------------------------------------
+
+    const FULL: &[u8] = br#"<c:chartSpace><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Chart</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>North</c:v></c:tx><c:val><c:numRef><c:f>S!$B$2:$B$5</c:f></c:numRef></c:val></c:ser><c:ser><c:idx val="1"/><c:order val="1"/><c:tx><c:strRef><c:f>S!$C$1</c:f><c:strCache><c:pt idx="0"><c:v>South</c:v></c:pt></c:strCache></c:strRef></c:tx><c:dLbls><c:dLbl><c:idx val="0"/><c:tx><c:rich><a:p><a:r><a:t>label</a:t></a:r></a:p></c:rich></c:tx></c:dLbl></c:dLbls><c:val><c:numRef><c:f>S!$C$2:$C$5</c:f></c:numRef></c:val></c:ser></c:barChart><c:catAx><c:axId val="1"/><c:title><c:tx><c:rich><a:p><a:r><a:t>Quarter</a:t></a:r></a:p></c:rich></c:tx></c:title></c:catAx><c:valAx><c:axId val="2"/><c:title><c:tx><c:rich><a:p><a:r><a:t>Va</a:t></a:r><a:r><a:t>lue</a:t></a:r></a:p></c:rich></c:tx></c:title></c:valAx></c:plotArea></c:chart></c:chartSpace>"#;
+
+    fn full() -> TemplateChart {
+        ChartSpec::from_template(FULL)
+            .expect("a template")
+            .with_references(vec![
+                "S!$B$2:$B$5".into(),
+                "S!$C$1".into(),
+                "S!$C$2:$C$5".into(),
+            ])
+    }
+
+    #[test]
+    fn axes_and_series_are_counted_in_document_order() {
+        let chart = full();
+        assert_eq!(chart.axis_count(), 2);
+        assert_eq!(chart.series_count(), 2);
+    }
+
+    #[test]
+    fn an_axis_title_is_replaced_and_escaped_and_the_chart_title_is_untouched() {
+        let out = rendered(full().with_axis_title(0, "Q & A <1>"));
+        assert!(out.contains("<a:t>Q &amp; A &lt;1&gt;</a:t>"), "{out}");
+        assert!(out.contains("<a:t>Chart</a:t>"), "{out}");
+        assert!(out.contains("<a:t>Va</a:t>"), "{out}");
+    }
+
+    #[test]
+    fn a_multi_run_axis_title_collapses_to_one_run() {
+        let out = rendered(full().with_axis_title(1, "Revenue"));
+        assert!(out.contains("<a:t>Revenue</a:t></a:r></a:p>"), "{out}");
+        assert!(!out.contains("lue</a:t>"), "{out}");
+    }
+
+    #[test]
+    fn a_literal_series_name_is_replaced() {
+        let out = rendered(full().with_series_name(0, "East & West"));
+        assert!(
+            out.contains("<c:tx><c:v>East &amp; West</c:v></c:tx>"),
+            "{out}"
+        );
+        assert!(!out.contains("North"), "{out}");
+    }
+
+    #[test]
+    fn a_referenced_series_name_is_refused_not_redirected_to_a_data_label() {
+        let error = full().with_series_name(1, "x").render();
+        assert!(
+            matches!(error, Err(ChartError::NoSeriesNameInTemplate { series: 1 })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn swaps_compose_with_references_and_the_chart_title() {
+        let out = rendered(
+            full()
+                .with_title("New chart")
+                .with_axis_title(0, "A")
+                .with_axis_title(1, "B")
+                .with_series_name(0, "C"),
+        );
+        for wanted in [
+            "<a:t>New chart</a:t>",
+            "<a:t>A</a:t>",
+            "<a:t>B</a:t>",
+            "<c:v>C</c:v>",
+            "<c:f>S!$C$1</c:f>",
+        ] {
+            assert!(out.contains(wanted), "{wanted} missing from {out}");
+        }
+    }
+
+    #[test]
+    fn the_last_swap_for_an_index_wins() {
+        let out = rendered(
+            full()
+                .with_series_name(0, "first")
+                .with_series_name(0, "second"),
+        );
+        assert!(out.contains("<c:v>second</c:v>"), "{out}");
+        assert!(!out.contains("first"), "{out}");
+    }
+
+    #[test]
+    fn an_index_past_the_end_is_refused() {
+        assert!(matches!(
+            full().with_axis_title(2, "x").render(),
+            Err(ChartError::TemplateIndexOutOfRange {
+                kind: "axis",
+                index: 2,
+                count: 2
+            })
+        ));
+        assert!(matches!(
+            full().with_series_name(9, "x").render(),
+            Err(ChartError::TemplateIndexOutOfRange {
+                kind: "series",
+                index: 9,
+                count: 2
+            })
+        ));
+    }
+
+    #[test]
+    fn an_axis_without_a_title_is_refused_not_given_one() {
+        let template: &[u8] = br#"<c:chartSpace><c:plotArea><c:valAx><c:axId val="2"/></c:valAx><c:valAx/></c:plotArea></c:chartSpace>"#;
+        let chart = ChartSpec::from_template(template).expect("a template");
+        assert_eq!(chart.axis_count(), 2);
+        assert!(matches!(
+            chart.clone().with_axis_title(0, "x").render(),
+            Err(ChartError::NoAxisTitleInTemplate { axis: 0 })
+        ));
+        assert!(matches!(
+            chart.with_axis_title(1, "x").render(),
+            Err(ChartError::NoAxisTitleInTemplate { axis: 1 })
+        ));
+    }
+
+    #[test]
+    fn a_cell_bound_axis_title_is_refused() {
+        let template: &[u8] = br#"<c:chartSpace><c:plotArea><c:valAx><c:title><c:tx><c:strRef><c:f>S!$A$1</c:f></c:strRef></c:tx></c:title></c:valAx></c:plotArea></c:chartSpace>"#;
+        let error = ChartSpec::from_template(template)
+            .expect("a template")
+            .with_references(vec!["S!$A$1".into()])
+            .with_axis_title(0, "x")
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::NoAxisTitleInTemplate { axis: 0 })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_commented_out_axis_title_is_not_swapped() {
+        let template: &[u8] = br#"<c:chartSpace><c:plotArea><c:valAx><!--<c:title><c:tx><c:rich><a:p><a:r><a:t>Old</a:t></a:r></a:p></c:rich></c:tx></c:title>--></c:valAx></c:plotArea></c:chartSpace>"#;
+        let error = ChartSpec::from_template(template)
+            .expect("a template")
+            .with_axis_title(0, "x")
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::NoAxisTitleInTemplate { axis: 0 })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn an_axis_element_is_not_mistaken_for_a_series() {
+        let template: &[u8] = br#"<c:chartSpace><c:plotArea><c:serAx><c:axId val="3"/></c:serAx></c:plotArea></c:chartSpace>"#;
+        let chart = ChartSpec::from_template(template).expect("a template");
+        assert_eq!(chart.series_count(), 0);
+        assert_eq!(chart.axis_count(), 1);
+    }
+
+    #[test]
+    fn an_unclosed_series_is_refused_at_parse() {
+        let template: &[u8] =
+            br#"<c:chartSpace><c:plotArea><c:ser><c:idx val="0"/></c:plotArea></c:chartSpace>"#;
+        assert!(matches!(
+            ChartSpec::from_template(template),
+            Err(ChartError::UnclosedElement { .. })
+        ));
+    }
+
+    #[test]
+    fn an_excelize_spelling_is_swapped_too() {
+        let template: &[u8] = br#"<chartSpace xmlns="http://schemas.openxmlformats.org/drawingml/2006/chart"><chart><plotArea><barChart><ser><idx val="0"/><order val="0"/><tx><v>North</v></tx></ser></barChart><catAx><title><tx><rich><a:p><a:r><a:t>Axis</a:t></a:r></a:p></rich></tx></title></catAx></plotArea></chart></chartSpace>"#;
+        let out = rendered(
+            ChartSpec::from_template(template)
+                .expect("a template")
+                .with_axis_title(0, "Week")
+                .with_series_name(0, "Findings"),
+        );
+        assert!(out.contains("<a:t>Week</a:t>"), "{out}");
+        assert!(out.contains("<tx><v>Findings</v></tx>"), "{out}");
+    }
+
+    #[test]
+    fn a_template_with_no_swaps_is_byte_identical() {
+        assert_eq!(full().render().expect("a chart").xml, FULL);
     }
 }
