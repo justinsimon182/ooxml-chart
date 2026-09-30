@@ -41,8 +41,8 @@ does not read, write, or zip `.xlsx` packages.
 | Title, gridlines, visibility, number format | Done |
 | Min, max, major and minor unit, reversed order, log scale | Done |
 | Tick marks, tick label position, label rotation, minor gridlines | Done |
-| Date axis | Done — `Axis::dates`; base unit only |
-| Date axis major and minor time units | **Open** |
+| Date axis | Done — `Axis::dates` |
+| Date axis major and minor time units | Done — `Axis::date_major`, `date_minor`; never finer than the base unit |
 | Axis line styling, custom crossing value (`crossesAt`) | **Open** |
 | Display units (thousands, millions) | **Open** |
 

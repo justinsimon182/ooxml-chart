@@ -362,7 +362,9 @@ fn main() {
                 .title("Daily")
                 .category_axis(
                     Axis::default()
-                        .dates(DateUnit::Months)
+                        .dates(DateUnit::Days)
+                        .date_major(3, DateUnit::Months)
+                        .date_minor(1, DateUnit::Months)
                         .number_format("mmm yy"),
                 )
                 .series(series("Users", "B", "0090B2")),

@@ -1129,3 +1129,128 @@ mod manual_layout {
         assert!(xml.contains("<c:manualLayout>"), "{xml}");
     }
 }
+
+// --- Date-axis tick units ---------------------------------------------------------
+
+mod date_ticks {
+    use super::*;
+
+    fn dated(axis: Axis) -> Result<String, ChartError> {
+        ChartSpec::new(ChartKind::Line)
+            .category_axis(axis)
+            .series(series())
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+    }
+
+    fn reason(result: Result<String, ChartError>) -> &'static str {
+        match result {
+            Err(ChartError::InvalidAxisRange { reason }) => reason,
+            other => panic!("expected InvalidAxisRange, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn major_and_minor_units_follow_the_base_unit_in_schema_order() {
+        let xml = dated(
+            Axis::default()
+                .dates(DateUnit::Days)
+                .date_major(3, DateUnit::Months)
+                .date_minor(1, DateUnit::Months),
+        )
+        .expect("a chart");
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<c:baseTimeUnit val="days"/><c:majorUnit val="3"/><c:majorTimeUnit val="months"/><c:minorUnit val="1"/><c:minorTimeUnit val="months"/></c:dateAx>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn only_a_major_unit_writes_only_its_pair() {
+        let xml = dated(
+            Axis::default()
+                .dates(DateUnit::Months)
+                .date_major(1, DateUnit::Years),
+        )
+        .expect("a chart");
+        assert!(
+            xml.contains(r#"<c:majorUnit val="1"/><c:majorTimeUnit val="years"/></c:dateAx>"#),
+            "{xml}"
+        );
+        assert!(!xml.contains("minorUnit"), "{xml}");
+    }
+
+    #[test]
+    fn a_date_axis_without_units_writes_none() {
+        let xml = dated(Axis::default().dates(DateUnit::Days)).expect("a chart");
+        assert!(
+            xml.contains(r#"<c:baseTimeUnit val="days"/></c:dateAx>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_unit_the_same_size_as_the_base_is_allowed() {
+        dated(
+            Axis::default()
+                .dates(DateUnit::Months)
+                .date_major(2, DateUnit::Months),
+        )
+        .expect("a chart");
+    }
+
+    #[test]
+    fn a_unit_finer_than_the_base_is_refused() {
+        let why = reason(dated(
+            Axis::default()
+                .dates(DateUnit::Months)
+                .date_major(7, DateUnit::Days),
+        ));
+        assert!(why.contains("finer"), "{why}");
+        let why = reason(dated(
+            Axis::default()
+                .dates(DateUnit::Years)
+                .date_minor(1, DateUnit::Months),
+        ));
+        assert!(why.contains("finer"), "{why}");
+    }
+
+    #[test]
+    fn a_fractional_count_is_refused() {
+        let why = reason(dated(
+            Axis::default()
+                .dates(DateUnit::Days)
+                .major_unit(1.5)
+                .dates(DateUnit::Days),
+        ));
+        assert!(why.contains("whole"), "{why}");
+    }
+
+    #[test]
+    fn time_units_on_a_plain_category_axis_are_refused() {
+        let why = reason(dated(Axis::default().date_major(1, DateUnit::Months)));
+        assert!(why.contains("not a date axis"), "{why}");
+    }
+
+    #[test]
+    fn a_time_unit_with_nothing_to_count_is_refused() {
+        let mut axis = Axis::default().dates(DateUnit::Days);
+        axis.major_time_unit = Some(DateUnit::Months);
+        let why = reason(dated(axis));
+        assert!(
+            why.contains("nothing") || why.contains("no tick unit"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn a_zero_count_is_still_refused_as_not_positive() {
+        let why = reason(dated(
+            Axis::default()
+                .dates(DateUnit::Days)
+                .date_major(0, DateUnit::Days),
+        ));
+        assert!(why.contains("positive"), "{why}");
+    }
+}

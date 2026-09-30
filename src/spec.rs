@@ -855,8 +855,8 @@ impl TickMark {
     }
 }
 
-/// The unit of a date axis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The unit of a date axis, finest first: `Days < Months < Years`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[non_exhaustive]
@@ -964,6 +964,13 @@ pub struct Axis {
     /// Draw a date axis with this unit. Category axes of bar, column, line and
     /// area charts only.
     pub date_unit: Option<DateUnit>,
+    /// What `major_unit` counts on a date axis: `major_unit = 3` with
+    /// `Months` puts a labelled tick every three months. Date axes only, and
+    /// never finer than the axis's own unit.
+    pub major_time_unit: Option<DateUnit>,
+    /// What `minor_unit` counts on a date axis. Same rules as
+    /// `major_time_unit`.
+    pub minor_time_unit: Option<DateUnit>,
 }
 
 impl Default for Axis {
@@ -989,6 +996,8 @@ impl Default for Axis {
             label_style: None,
             crosses_max: false,
             date_unit: None,
+            major_time_unit: None,
+            minor_time_unit: None,
         }
     }
 }
@@ -1125,6 +1134,26 @@ impl Axis {
     #[must_use]
     pub fn dates(mut self, unit: DateUnit) -> Self {
         self.date_unit = Some(unit);
+        self
+    }
+
+    /// Labels a date axis every `count` `unit`s, e.g. `date_major(3,
+    /// DateUnit::Months)`. Sets `major_unit` and `major_time_unit` together.
+    /// Checked at render time: a whole number of at least 1, on a date axis,
+    /// no finer than the axis's own unit.
+    #[must_use]
+    pub fn date_major(mut self, count: u16, unit: DateUnit) -> Self {
+        self.major_unit = Some(f64::from(count));
+        self.major_time_unit = Some(unit);
+        self
+    }
+
+    /// Puts minor ticks on a date axis every `count` `unit`s. Same rules as
+    /// [`Axis::date_major`].
+    #[must_use]
+    pub fn date_minor(mut self, count: u16, unit: DateUnit) -> Self {
+        self.minor_unit = Some(f64::from(count));
+        self.minor_time_unit = Some(unit);
         self
     }
 }

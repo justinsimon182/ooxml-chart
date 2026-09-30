@@ -11,9 +11,10 @@
 
 use crate::error::ChartError;
 use crate::spec::{
-    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, ErrorAmount,
-    ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout, MarkerSymbol, Paint, Plot,
-    PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DateUnit,
+    ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout, MarkerSymbol, Paint,
+    Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline,
+    TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -574,6 +575,44 @@ fn check_area_style(style: &AreaStyle) -> Result<(), ChartError> {
     Ok(())
 }
 
+/// Date-axis tick spacing: a count of time units, never finer than the axis's
+/// own unit, which is how Excel's own dialog limits it.
+/// `<c:majorUnit>` and `<c:majorTimeUnit>` (or the minor pair), in that order.
+fn date_tick_xml(which: &str, count: Option<f64>, unit: Option<DateUnit>) -> String {
+    let count = count
+        .map(|count| format!(r#"<c:{which}Unit val="{count}"/>"#))
+        .unwrap_or_default();
+    let unit = unit
+        .map(|unit| format!(r#"<c:{which}TimeUnit val="{}"/>"#, unit.code()))
+        .unwrap_or_default();
+    format!("{count}{unit}")
+}
+
+fn check_date_ticks(axis: &Axis) -> Result<(), ChartError> {
+    let reason = |reason| Err(ChartError::InvalidAxisRange { reason });
+    let Some(base) = axis.date_unit else {
+        if axis.major_time_unit.is_some() || axis.minor_time_unit.is_some() {
+            return reason("a tick time unit is set on an axis that is not a date axis");
+        }
+        return Ok(());
+    };
+    for (count, unit) in [
+        (axis.major_unit, axis.major_time_unit),
+        (axis.minor_unit, axis.minor_time_unit),
+    ] {
+        if unit.is_some() && count.is_none() {
+            return reason("a tick time unit has no tick unit to count");
+        }
+        if count.is_some_and(|count| count.fract() != 0.0) {
+            return reason("a date axis tick unit is not a whole number");
+        }
+        if unit.is_some_and(|unit| unit < base) {
+            return reason("a date axis tick unit is finer than the axis unit");
+        }
+    }
+    Ok(())
+}
+
 fn check_axis(axis: &Axis) -> Result<(), ChartError> {
     let reason = |reason| Err(ChartError::InvalidAxisRange { reason });
     for value in [axis.min, axis.max, axis.major_unit, axis.minor_unit]
@@ -596,6 +635,7 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
     {
         return reason("a tick unit is not positive");
     }
+    check_date_ticks(axis)?;
     if let Some(base) = axis.log_base {
         check_range("log base", i64::from(base), 2, 1000)?;
         if axis.min.is_some_and(|min| min <= 0.0) {
@@ -1463,8 +1503,10 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
     let tail = match kind {
         AxisKind::Category => String::new(),
         AxisKind::Date => format!(
-            r#"<c:auto val="0"/><c:lblOffset val="100"/><c:baseTimeUnit val="{}"/>"#,
-            axis.date_unit.map_or("days", |unit| unit.code())
+            r#"<c:auto val="0"/><c:lblOffset val="100"/><c:baseTimeUnit val="{}"/>{}{}"#,
+            axis.date_unit.map_or("days", |unit| unit.code()),
+            date_tick_xml("major", axis.major_unit, axis.major_time_unit),
+            date_tick_xml("minor", axis.minor_unit, axis.minor_time_unit),
         ),
         AxisKind::Value => {
             let major = axis
