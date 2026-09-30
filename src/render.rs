@@ -718,6 +718,12 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
         }
         check_position(position)?;
     }
+    if let Some(Paint::Color(color)) = &axis.line {
+        check_color(color)?;
+    }
+    if let Some(points) = axis.line_width_pt {
+        check_line_width(points)?;
+    }
     for style in [&axis.title_style, &axis.label_style].into_iter().flatten() {
         check_text_style(style)?;
     }
@@ -1564,6 +1570,15 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
     } else {
         format!(r#"<c:tickLblPos val="{}"/>"#, axis.tick_labels.code())
     };
+    let line = if axis.line.is_some() || axis.line_width_pt.is_some() {
+        sp_pr_xml(&AreaStyle {
+            border: axis.line.clone(),
+            border_width_pt: axis.line_width_pt,
+            ..AreaStyle::default()
+        })
+    } else {
+        String::new()
+    };
     let tx_pr = if axis.label_style.is_some() || axis.label_rotation.is_some() {
         tx_pr_xml(axis.label_style.as_ref(), axis.label_rotation)
     } else {
@@ -1606,7 +1621,7 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
         }
     };
     format!(
-        r#"<c:{tag}><c:axId val="{id}"/><c:scaling>{log}<c:orientation val="{orientation}"/>{max}{min}</c:scaling><c:delete val="{deleted}"/><c:axPos val="{position}"/>{gridlines}{minor_gridlines}{title}{number_format}{ticks}{tick_labels}{tx_pr}<c:crossAx val="{cross_id}"/>{crosses}{tail}</c:{tag}>"#,
+        r#"<c:{tag}><c:axId val="{id}"/><c:scaling>{log}<c:orientation val="{orientation}"/>{max}{min}</c:scaling><c:delete val="{deleted}"/><c:axPos val="{position}"/>{gridlines}{minor_gridlines}{title}{number_format}{ticks}{tick_labels}{line}{tx_pr}<c:crossAx val="{cross_id}"/>{crosses}{tail}</c:{tag}>"#,
         deleted = i32::from(!axis.visible),
     )
 }

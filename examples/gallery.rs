@@ -397,6 +397,14 @@ fn main() {
                 .series(series("North", "B", "8E0DD1")),
         ),
         (
+            "axis_line",
+            ChartSpec::new(ChartKind::Line)
+                .title("Axis lines")
+                .category_axis(Axis::default().line("8E0DD1").line_width(2.5))
+                .value_axis(Axis::default().no_line())
+                .series(series("North", "B", "0090B2")),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")
