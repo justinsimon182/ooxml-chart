@@ -29,7 +29,7 @@ does not read, write, or zip `.xlsx` packages.
 | Per-point colour and pie explosion | Done — `PointFormat` |
 | Trendlines (linear, exponential, logarithmic, polynomial, power, moving average) | Done — refused where Excel forbids them |
 | Cached values and categories | Done |
-| Error bars | **Open** — the `errDir` rules differ by chart kind and are not yet pinned |
+| Error bars | Done — `ErrorBars`; fixed, percentage, std dev, std error, custom; x and y on scatter and bubble. `errDir` is left out on bar and column, written elsewhere |
 | Per-point marker and data-label overrides | Done — `PointFormat::marker`, `PointLabel` (hide, custom text, position, font) |
 | Series-name cache for referenced names | **Open** — needs a `SeriesName` change |
 | Gradient and pattern fills | **Open** |
@@ -81,7 +81,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 44 in all) validates against the
+date axis, and one drawing per anchor type â€” 47 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

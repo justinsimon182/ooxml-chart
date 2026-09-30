@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Error bars: `ErrorBars` and `Series::with_error_bars`, with `ErrorAmount`
+  (fixed, percentage, standard deviation, standard error, custom from a range
+  or literal values), `ErrorBarSide`, `ErrorAxis`, end caps, colour and width.
+  Refused on pie, doughnut and radar, and for x bars off a scatter or bubble.
 - Per-point overrides: `PointFormat::marker` restyles one marker, and its
   `color` now recolours a marker on line, scatter and radar series.
   `PointLabel` and `Series::with_point_label` hide, reword, move or restyle one

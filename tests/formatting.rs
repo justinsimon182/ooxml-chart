@@ -793,3 +793,234 @@ mod point_overrides {
         );
     }
 }
+
+// --- Error bars ----------------------------------------------------------------
+
+mod error_bars {
+    use super::*;
+    use ooxml_chart::{ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues};
+
+    fn with(kind: ChartKind, bars: ErrorBars) -> Result<String, ChartError> {
+        ChartSpec::new(kind)
+            .series(series().with_error_bars(bars))
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+    }
+
+    fn ok(kind: ChartKind, bars: ErrorBars) -> String {
+        let xml = with(kind, bars).expect("a chart");
+        assert_well_formed(&xml);
+        xml
+    }
+
+    #[test]
+    fn a_column_writes_no_direction() {
+        let xml = ok(
+            ChartKind::ColumnClustered,
+            ErrorBars::new(ErrorAmount::Fixed(5.0)),
+        );
+        assert!(
+            xml.contains(r#"<c:errBars><c:errBarType val="both"/><c:errValType val="fixedVal"/><c:noEndCap val="0"/><c:val val="5"/></c:errBars>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_line_writes_a_y_direction() {
+        let xml = ok(
+            ChartKind::Line,
+            ErrorBars::new(ErrorAmount::Percentage(10.0)).side(ErrorBarSide::Plus),
+        );
+        assert!(
+            xml.contains(r#"<c:errBars><c:errDir val="y"/><c:errBarType val="plus"/><c:errValType val="percentage"/><c:noEndCap val="0"/><c:val val="10"/></c:errBars>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_scatter_takes_both_directions_x_first() {
+        let xml = ChartSpec::new(ChartKind::Scatter)
+            .series(
+                series()
+                    .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(1.0)))
+                    .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(2.0)).along_x()),
+            )
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+            .expect("a chart");
+        assert_well_formed(&xml);
+        let x = xml.find(r#"<c:errDir val="x"/>"#).expect("x bars");
+        let y = xml.find(r#"<c:errDir val="y"/>"#).expect("y bars");
+        assert!(x < y, "{xml}");
+        assert!(xml.find("<c:errBars>") < xml.find("<c:xVal>"), "{xml}");
+    }
+
+    #[test]
+    fn standard_deviation_and_error_carry_the_right_fields() {
+        let sd = ok(ChartKind::Line, ErrorBars::new(ErrorAmount::StdDev(2.0)));
+        assert!(
+            sd.contains(r#"<c:errValType val="stdDev"/><c:noEndCap val="0"/><c:val val="2"/>"#),
+            "{sd}"
+        );
+        let se = ok(ChartKind::Line, ErrorBars::new(ErrorAmount::StdErr));
+        assert!(
+            se.contains(r#"<c:errValType val="stdErr"/><c:noEndCap val="0"/></c:errBars>"#),
+            "{se}"
+        );
+    }
+
+    #[test]
+    fn custom_amounts_can_be_references_or_literals() {
+        let xml = ok(
+            ChartKind::ColumnClustered,
+            ErrorBars::new(ErrorAmount::Custom {
+                plus: Some(ErrorValues::Reference("'S'!$D$3:$D$5".into())),
+                minus: Some(ErrorValues::Literal(vec![0.5, 1.0])),
+            }),
+        );
+        assert!(
+            xml.contains(r#"<c:errValType val="cust"/><c:noEndCap val="0"/><c:plus><c:numRef><c:f>&#39;S&#39;!$D$3:$D$5</c:f></c:numRef></c:plus><c:minus><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="2"/><c:pt idx="0"><c:v>0.5</c:v></c:pt><c:pt idx="1"><c:v>1</c:v></c:pt></c:numLit></c:minus>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_one_sided_custom_bar_needs_only_its_own_side() {
+        let xml = ok(
+            ChartKind::ColumnClustered,
+            ErrorBars::new(ErrorAmount::Custom {
+                plus: Some(ErrorValues::Reference("S!$D$3:$D$5".into())),
+                minus: None,
+            })
+            .side(ErrorBarSide::Plus),
+        );
+        assert!(
+            xml.contains("<c:plus>") && !xml.contains("<c:minus>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_custom_bar_missing_a_side_it_draws_is_refused() {
+        let error = with(
+            ChartKind::ColumnClustered,
+            ErrorBars::new(ErrorAmount::Custom {
+                plus: Some(ErrorValues::Literal(vec![1.0])),
+                minus: None,
+            }),
+        );
+        assert!(
+            matches!(error, Err(ChartError::Unsupported { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn caps_colour_and_width_are_written() {
+        let xml = ok(
+            ChartKind::Line,
+            ErrorBars::new(ErrorAmount::Fixed(1.0))
+                .end_cap(false)
+                .color("8e0dd1")
+                .width(1.5),
+        );
+        assert!(xml.contains(r#"<c:noEndCap val="1"/>"#), "{xml}");
+        assert!(
+            xml.contains(r#"<c:val val="1"/><c:spPr><a:ln w="19050"><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></a:ln></c:spPr></c:errBars>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn error_bars_come_after_trendlines_and_before_the_data() {
+        let xml = ok_series(
+            ChartKind::ColumnClustered,
+            series()
+                .with_trendline(Trendline::new(TrendlineKind::Linear))
+                .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(1.0))),
+        );
+        let trend = xml.find("<c:trendline>").expect("trendline");
+        let bars = xml.find("<c:errBars>").expect("errBars");
+        let cat = xml.find("<c:cat>").expect("cat");
+        assert!(trend < bars && bars < cat, "{xml}");
+    }
+
+    fn ok_series(kind: ChartKind, series: Series) -> String {
+        let xml = String::from_utf8(
+            ChartSpec::new(kind)
+                .series(series)
+                .render()
+                .expect("a chart")
+                .xml,
+        )
+        .expect("UTF-8");
+        assert_well_formed(&xml);
+        xml
+    }
+
+    #[test]
+    fn kinds_excel_draws_no_error_bars_on_are_refused() {
+        for kind in [ChartKind::Pie, ChartKind::Doughnut, ChartKind::Radar] {
+            let error = with(kind, ErrorBars::new(ErrorAmount::Fixed(1.0)));
+            assert!(
+                matches!(error, Err(ChartError::Unsupported { .. })),
+                "{kind:?}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_x_bar_off_a_scatter_is_refused() {
+        let error = with(
+            ChartKind::ColumnClustered,
+            ErrorBars::new(ErrorAmount::Fixed(1.0)).along_x(),
+        );
+        assert!(
+            matches!(error, Err(ChartError::Unsupported { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn two_bars_in_one_direction_are_refused() {
+        let error = ChartSpec::new(ChartKind::Scatter)
+            .series(
+                series()
+                    .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(1.0)))
+                    .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(2.0))),
+            )
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::Unsupported { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn nonsense_amounts_and_styles_are_refused() {
+        for amount in [
+            ErrorAmount::Fixed(-1.0),
+            ErrorAmount::Fixed(f64::NAN),
+            ErrorAmount::Percentage(f64::INFINITY),
+            ErrorAmount::StdDev(0.0),
+            ErrorAmount::Custom {
+                plus: Some(ErrorValues::Literal(vec![])),
+                minus: Some(ErrorValues::Literal(vec![1.0])),
+            },
+        ] {
+            let error = with(ChartKind::Line, ErrorBars::new(amount.clone()));
+            assert!(
+                matches!(error, Err(ChartError::OutOfRange { .. })),
+                "{amount:?}: {error:?}"
+            );
+        }
+        let error = with(
+            ChartKind::Line,
+            ErrorBars::new(ErrorAmount::Fixed(1.0)).color("nope"),
+        );
+        assert!(
+            matches!(error, Err(ChartError::InvalidColor { .. })),
+            "{error:?}"
+        );
+    }
+}

@@ -4,9 +4,9 @@
 //! output between versions or feeding another tool's validator.
 
 use ooxml_chart::{
-    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, LegendPosition,
-    MarkerSymbol, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels,
-    Trendline, TrendlineKind,
+    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, ErrorAmount,
+    ErrorBarSide, ErrorBars, ErrorValues, LegendPosition, MarkerSymbol, Plot, PointFormat,
+    PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -299,6 +299,44 @@ fn main() {
                             PointLabel::text("Best").at(DataLabelPosition::OutsideEnd),
                         )
                         .with_trendline(Trendline::new(TrendlineKind::Linear)),
+                ),
+        ),
+        (
+            "error_bars_column",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Error bars")
+                .series(
+                    series("North", "B", "8E0DD1").with_error_bars(
+                        ErrorBars::new(ErrorAmount::Custom {
+                            plus: Some(ErrorValues::Reference("'Sheet1'!$D$2:$D$5".into())),
+                            minus: Some(ErrorValues::Literal(vec![0.5, 1.0, 0.5, 1.5])),
+                        })
+                        .color("010102")
+                        .width(1.25),
+                    ),
+                ),
+        ),
+        (
+            "error_bars_scatter",
+            ChartSpec::new(ChartKind::Scatter)
+                .title("Error bars")
+                .series(
+                    series("North", "B", "0090B2")
+                        .with_error_bars(ErrorBars::new(ErrorAmount::Percentage(10.0)).along_x())
+                        .with_error_bars(
+                            ErrorBars::new(ErrorAmount::StdDev(1.0))
+                                .side(ErrorBarSide::Plus)
+                                .end_cap(false),
+                        ),
+                ),
+        ),
+        (
+            "error_bars_line",
+            ChartSpec::new(ChartKind::LineMarkers)
+                .title("Error bars")
+                .series(
+                    series("North", "B", "104991")
+                        .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(1.5))),
                 ),
         ),
         (
