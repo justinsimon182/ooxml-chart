@@ -2153,3 +2153,118 @@ mod fills {
         assert!(matches!(result, Err(ChartError::InvalidFill { .. })));
     }
 }
+
+// --- Reference syntax -------------------------------------------------------------------
+
+mod reference_syntax {
+    use super::*;
+    use ooxml_chart::{DataLabels, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues};
+
+    fn refused(spec: ChartSpec) -> String {
+        match spec.render() {
+            Err(ChartError::InvalidReference { reference, .. }) => reference,
+            other => panic!("expected InvalidReference, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_bad_values_reference_is_refused_with_the_text_given() {
+        let bad = ChartSpec::new(ChartKind::Line).series(Series::new(
+            SeriesName::Literal("A".into()),
+            "Bad Name!$B$2:$B$5",
+        ));
+        assert_eq!(refused(bad), "Bad Name!$B$2:$B$5");
+    }
+
+    #[test]
+    fn every_place_a_series_holds_a_reference_is_checked() {
+        let ok = || Series::new(SeriesName::Literal("A".into()), "'S'!$B$2:$B$5");
+        assert_eq!(
+            refused(ChartSpec::new(ChartKind::Line).series(ok().with_categories("S!A1:"))),
+            "S!A1:"
+        );
+        assert_eq!(
+            refused(ChartSpec::new(ChartKind::Line).series(Series::new(
+                SeriesName::Reference("Sheet 1!$C$1".into()),
+                "S!$B$2:$B$5"
+            ))),
+            "Sheet 1!$C$1"
+        );
+        assert_eq!(
+            refused(
+                ChartSpec::new(ChartKind::Bubble).series(
+                    ok().with_categories("S!$A$2:$A$5")
+                        .with_bubble_sizes("S$D$2")
+                )
+            ),
+            "S$D$2"
+        );
+        assert_eq!(
+            refused(
+                ChartSpec::new(ChartKind::Line)
+                    .series(ok().with_label_range("S!$D$2:$D$5:$D$9"))
+                    .data_labels(DataLabels::values().with_cells())
+            ),
+            "S!$D$2:$D$5:$D$9"
+        );
+        assert_eq!(
+            refused(
+                ChartSpec::new(ChartKind::Line).series(
+                    ok().with_error_bars(
+                        ErrorBars::new(ErrorAmount::Custom {
+                            plus: Some(ErrorValues::Reference("S!$C$".into())),
+                            minus: None,
+                        })
+                        .side(ErrorBarSide::Plus)
+                    )
+                )
+            ),
+            "S!$C$"
+        );
+    }
+
+    #[test]
+    fn extra_plots_are_checked_too() {
+        let bad = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series())
+            .plot(
+                Plot::new(ChartKind::Line)
+                    .series(Series::new(SeriesName::Literal("B".into()), "nope!")),
+            );
+        assert_eq!(refused(bad), "nope!");
+    }
+
+    #[test]
+    fn quoting_names_unions_and_whole_columns_are_accepted() {
+        for reference in [
+            "'My Sheet'!$B$2:$B$5",
+            "'Bob''s'!$B$2",
+            "Sheet1!$B:$B",
+            "(Sheet1!$B$2:$B$3,Sheet1!$B$5:$B$6)",
+            "Sheet1!Revenue",
+        ] {
+            ChartSpec::new(ChartKind::Line)
+                .series(Series::new(SeriesName::Literal("A".into()), reference))
+                .render()
+                .unwrap_or_else(|e| panic!("{reference}: {e}"));
+        }
+    }
+
+    #[test]
+    fn a_template_refuses_a_bad_reference_but_takes_a_good_one() {
+        let part = br#"<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:barChart><c:ser><c:val><c:numRef><c:f>Old!$A$1</c:f></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>"#;
+        let bad = ChartSpec::from_template(part)
+            .expect("a template")
+            .with_references(vec!["New Sheet!$A$1".into()])
+            .render();
+        assert!(
+            matches!(bad, Err(ChartError::InvalidReference { .. })),
+            "{bad:?}"
+        );
+        ChartSpec::from_template(part)
+            .expect("a template")
+            .with_references(vec!["'New Sheet'!$A$1".into()])
+            .render()
+            .expect("quoted names are fine");
+    }
+}

@@ -234,6 +234,17 @@ pub enum ChartError {
         reason: &'static str,
     },
 
+    /// A reference that Excel would not parse, such as a sheet name with
+    /// spaces but no quotes, a stray colon or a column past XFD. Only the shape
+    /// is checked, not whether the sheet or name exists.
+    #[error("the reference `{reference}` is invalid: {reason}")]
+    InvalidReference {
+        /// The reference as given.
+        reference: String,
+        /// What is wrong with it.
+        reason: &'static str,
+    },
+
     /// A data label position the chart kind does not allow.
     ///
     /// Excel does not ignore an illegal `<c:dLblPos>` â€” it reports the file as

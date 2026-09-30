@@ -10,6 +10,7 @@
 //! the order of the ECMA-376 schema sequences.
 
 use crate::error::ChartError;
+use crate::reference;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
     DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
@@ -361,6 +362,11 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             }
         }
     }
+    for plot in plots {
+        for series in plot.series {
+            check_series_references(series)?;
+        }
+    }
     let leader_lines = spec.data_labels.as_ref().is_some_and(|l| l.leader_lines);
     if leader_lines && !matches!(primary.family, Family::Pie | Family::Doughnut) {
         return unsupported(format!("leader lines on {:?}", primary.kind));
@@ -709,6 +715,32 @@ fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
 }
 
 /// Colours, stop counts and angles of a fill or line.
+/// The syntax of every reference a series holds.
+fn check_series_references(series: &Series) -> Result<(), ChartError> {
+    if let SeriesName::Reference(reference) = &series.name {
+        reference::check(reference)?;
+    }
+    let optional = [
+        &series.categories,
+        &series.bubble_sizes,
+        &series.label_range,
+    ];
+    for reference in optional.into_iter().flatten() {
+        reference::check(reference)?;
+    }
+    reference::check(&series.values)?;
+    for bars in &series.error_bars {
+        if let ErrorAmount::Custom { plus, minus } = &bars.amount {
+            for values in [plus, minus].into_iter().flatten() {
+                if let ErrorValues::Reference(reference) = values {
+                    reference::check(reference)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn check_paint(paint: &Paint) -> Result<(), ChartError> {
     match paint {
         Paint::None => {}
