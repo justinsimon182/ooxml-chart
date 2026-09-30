@@ -30,6 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Reference syntax validation: every series reference (values, categories,
+  name, bubble sizes, label range, custom error bars) and every template
+  replacement is checked with `ChartError::InvalidReference`. It accepts quoted
+  and unquoted sheet names, `[1]` workbook indexes, cells, ranges, whole
+  columns and rows, defined names and parenthesised unions, and refuses what
+  Excel would not parse (an unquoted name with spaces, a missing `!`, a stray
+  colon, a column past XFD). It checks shape only, not whether a sheet exists.
 - Gradient and pattern fills: `Paint` gains `Gradient` (two to ten stops at an
   angle) and `Pattern` (all 54 preset patterns, two colours). They work on chart
   and plot areas and borders (`AreaStyle::fill_paint`, `border_paint`), axis lines

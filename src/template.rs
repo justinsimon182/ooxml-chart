@@ -256,6 +256,9 @@ impl TemplateChart {
                 supplied: self.replacements.len(),
             });
         }
+        for reference in &self.replacements {
+            crate::reference::check(reference)?;
+        }
         if self.new_title.is_some() && self.title.is_none() {
             return Err(ChartError::NoTitleInTemplate);
         }

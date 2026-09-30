@@ -42,6 +42,7 @@
 mod drawing;
 mod error;
 mod metrics;
+mod reference;
 mod render;
 mod spec;
 mod template;
