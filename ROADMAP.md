@@ -66,7 +66,7 @@ does not read, write, or zip `.xlsx` packages.
 | --- | --- |
 | `twoCellAnchor`, `oneCellAnchor`, `absoluteAnchor` | Done |
 | `[Content_Types].xml` entry for a chart part | Done — `ChartPart::content_types_override` |
-| Drawing content-type and worksheet-relationship constants | **Open** |
+| Drawing content-type and worksheet-relationship constants | Done (`DRAWING_CONTENT_TYPE`, `worksheet_drawing_relationship`) |
 | Drawings hosting things other than charts | **Open** — out of scope unless asked for |
 
 ## Crate
