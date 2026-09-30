@@ -124,6 +124,11 @@ impl MarkerSymbol {
 ///
 /// Honoured on bar, column, pie, doughnut and bubble series; ignored on kinds
 /// where a single point has no shape of its own to colour.
+///
+/// On line, scatter and (unfilled) radar series the point's shape is its
+/// marker: `marker` restyles it and `color` recolours it, fill and border.
+/// `marker` and `explosion` are ignored on the kinds that have no such
+/// thing.
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
@@ -135,9 +140,20 @@ pub struct PointFormat {
     /// How far a pie slice is pulled out from the centre, as a percentage of
     /// the radius (0-400). Pie and doughnut only.
     pub explosion: Option<u16>,
+    /// Marker shape and size in points (2-72) for this point alone. Line,
+    /// scatter and unfilled radar series only.
+    pub marker: Option<(MarkerSymbol, u8)>,
 }
 
 impl PointFormat {
+    /// Gives this point its own marker, `size` in points (checked at render
+    /// time, 2-72).
+    #[must_use]
+    pub fn marker(mut self, symbol: MarkerSymbol, size: u8) -> Self {
+        self.marker = Some((symbol, size));
+        self
+    }
+
     /// An unformatted point; chain the setters.
     pub fn new() -> Self {
         Self::default()
@@ -325,6 +341,9 @@ pub struct Series {
     /// Per-point formatting, by zero-based point index.
     #[cfg_attr(feature = "serde", serde(default))]
     pub points: Vec<(usize, PointFormat)>,
+    /// Per-point data-label overrides, by zero-based point index.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub point_labels: Vec<(usize, PointLabel)>,
     /// Fitted lines drawn over the series.
     #[cfg_attr(feature = "serde", serde(default))]
     pub trendlines: Vec<Trendline>,
@@ -345,6 +364,7 @@ impl Series {
             values_cache: None,
             bubble_sizes: None,
             points: Vec::new(),
+            point_labels: Vec::new(),
             trendlines: Vec::new(),
         }
     }
@@ -413,6 +433,17 @@ impl Series {
     pub fn with_point(mut self, index: usize, format: PointFormat) -> Self {
         self.points.retain(|(existing, _)| *existing != index);
         self.points.push((index, format));
+        self
+    }
+
+    /// Overrides the data label of one point, by zero-based index: hide it,
+    /// give it custom text, move it or restyle it. The rest inherit the
+    /// chart-wide [`DataLabels`]. A later call for the same index replaces
+    /// the earlier one.
+    #[must_use]
+    pub fn with_point_label(mut self, index: usize, label: PointLabel) -> Self {
+        self.point_labels.retain(|(existing, _)| *existing != index);
+        self.point_labels.push((index, label));
         self
     }
 
@@ -1012,6 +1043,62 @@ impl DataLabels {
     }
 
     /// Styles the label text.
+    #[must_use]
+    pub fn style(mut self, style: TextStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// An override for one point's data label, set with
+/// [`Series::with_point_label`].
+///
+/// Whatever it leaves unset (what to show, number format, position, font) is
+/// inherited from the chart-wide [`DataLabels`]. If the chart has none, the
+/// point shows its value. A series with any override writes its own label
+/// settings, so the other points of that series keep the chart-wide look.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct PointLabel {
+    /// Remove this point's label. Cannot be combined with `text`.
+    pub hidden: bool,
+    /// Replace the label with this literal text.
+    pub text: Option<String>,
+    /// Where to put this label. Checked against the chart kind like
+    /// [`DataLabels::position`].
+    pub position: Option<DataLabelPosition>,
+    /// Font for this label.
+    pub style: Option<TextStyle>,
+}
+
+impl PointLabel {
+    /// A label that is not drawn.
+    pub fn hidden() -> Self {
+        Self {
+            hidden: true,
+            ..Self::default()
+        }
+    }
+
+    /// A label showing `text` instead of the value.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self {
+            text: Some(text.into()),
+            ..Self::default()
+        }
+    }
+
+    /// Places this label.
+    #[must_use]
+    pub fn at(mut self, position: DataLabelPosition) -> Self {
+        self.position = Some(position);
+        self
+    }
+
+    /// Styles this label's text.
     #[must_use]
     pub fn style(mut self, style: TextStyle) -> Self {
         self.style = Some(style);

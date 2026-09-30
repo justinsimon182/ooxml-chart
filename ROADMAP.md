@@ -30,7 +30,7 @@ does not read, write, or zip `.xlsx` packages.
 | Trendlines (linear, exponential, logarithmic, polynomial, power, moving average) | Done — refused where Excel forbids them |
 | Cached values and categories | Done |
 | Error bars | **Open** — the `errDir` rules differ by chart kind and are not yet pinned |
-| Per-point marker and data-label overrides | **Open** |
+| Per-point marker and data-label overrides | Done — `PointFormat::marker`, `PointLabel` (hide, custom text, position, font) |
 | Series-name cache for referenced names | **Open** — needs a `SeriesName` change |
 | Gradient and pattern fills | **Open** |
 
@@ -55,7 +55,7 @@ does not read, write, or zip `.xlsx` packages.
 | Legend position, overlay | Done |
 | Data labels: value, category, series name, percent, number format, position | Done — positions validated per kind |
 | Manual plot-area and legend layout | **Open** |
-| Per-label text, leader lines, legend-entry deletion | **Open** |
+| Leader lines, legend-entry deletion, per-label text from cells or fields | **Open** |
 | Data table under the plot | **Open** |
 
 ## Drawing and package helpers
@@ -81,7 +81,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 42 in all) validates against the
+date axis, and one drawing per anchor type â€” 44 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

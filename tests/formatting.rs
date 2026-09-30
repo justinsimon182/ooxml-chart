@@ -309,7 +309,7 @@ fn a_later_point_format_replaces_an_earlier_one() {
 #[test]
 fn points_are_ignored_where_a_point_has_no_shape() {
     let out = render(
-        ChartSpec::new(ChartKind::Line)
+        ChartSpec::new(ChartKind::Area)
             .series(series().with_point(0, PointFormat::new().color("111111"))),
     );
     assert!(!out.contains("<c:dPt>"), "{out}");
@@ -575,4 +575,221 @@ fn a_content_types_entry_names_the_part_and_its_type() {
 fn control_characters_in_text_do_not_reach_the_xml() {
     let out = render(column().title("Sales\u{0}\u{8} Q1"));
     assert!(out.contains("<a:t>Sales Q1</a:t>"), "{out}");
+}
+
+// --- Per-point markers and data labels ----------------------------------------
+
+mod point_overrides {
+    use super::*;
+    use ooxml_chart::{MarkerSymbol, PointLabel};
+
+    fn line() -> ChartSpec {
+        ChartSpec::new(ChartKind::LineMarkers).series(series())
+    }
+
+    #[test]
+    fn a_point_marker_is_written_as_a_dpt_on_a_line_series() {
+        let xml = render(
+            ChartSpec::new(ChartKind::LineMarkers).series(
+                series()
+                    .with_marker(MarkerSymbol::Circle, 6)
+                    .with_point(2, PointFormat::new().marker(MarkerSymbol::Diamond, 10)),
+            ),
+        );
+        assert!(
+            xml.contains(r#"<c:dPt><c:idx val="2"/><c:marker><c:symbol val="diamond"/><c:size val="10"/></c:marker></c:dPt>"#),
+            "{xml}"
+        );
+        // After the series marker, before the categories.
+        let series_marker = xml.find(r#"<c:symbol val="circle"/>"#).expect("marker");
+        let dpt = xml.find("<c:dPt>").expect("dPt");
+        let cat = xml.find("<c:cat>").expect("cat");
+        assert!(series_marker < dpt && dpt < cat, "{xml}");
+    }
+
+    #[test]
+    fn a_point_colour_on_a_line_series_recolours_its_marker() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Scatter)
+                .series(series().with_point(0, PointFormat::new().color("8e0dd1"))),
+        );
+        assert!(
+            xml.contains(
+                r#"<c:dPt><c:idx val="0"/><c:marker><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/>"#
+            ),
+            "{xml}"
+        );
+        assert!(!xml.contains("<c:symbol"), "no symbol was asked for: {xml}");
+    }
+
+    #[test]
+    fn a_point_marker_on_a_column_is_ignored() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_point(1, PointFormat::new().marker(MarkerSymbol::Star, 8))),
+        );
+        assert!(!xml.contains("<c:dPt>"), "{xml}");
+    }
+
+    #[test]
+    fn a_point_marker_size_out_of_range_is_refused() {
+        let error = line()
+            .series(series().with_point(0, PointFormat::new().marker(MarkerSymbol::Circle, 1)))
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::OutOfRange { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_hidden_point_label_writes_its_own_dlbls_with_labels_off_for_the_rest() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_point_label(1, PointLabel::hidden())),
+        );
+        assert!(
+            xml.contains(r#"<c:dLbls><c:dLbl><c:idx val="1"/><c:delete val="1"/></c:dLbl><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_series_without_overrides_writes_no_series_level_labels() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .data_labels(DataLabels::values())
+                .series(series()),
+        );
+        assert_eq!(xml.matches("<c:dLbls>").count(), 1, "{xml}");
+    }
+
+    #[test]
+    fn a_text_label_is_escaped_and_shows_the_value_flag() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_point_label(0, PointLabel::text("Peak & <best>"))),
+        );
+        assert!(
+            xml.contains("<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Peak &amp; &lt;best&gt;</a:t></a:r></a:p></c:rich></c:tx>"),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<c:dLbl><c:idx val="0"/><c:tx>"#) && xml.contains(r#"<c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbl>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_overridden_point_inherits_the_chart_wide_labels() {
+        let xml =
+            render(
+                ChartSpec::new(ChartKind::ColumnClustered)
+                    .data_labels(
+                        DataLabels::values()
+                            .with_category()
+                            .number_format("0.0")
+                            .at(DataLabelPosition::InsideEnd),
+                    )
+                    .series(series().with_point_label(
+                        2,
+                        PointLabel::text("x").at(DataLabelPosition::OutsideEnd),
+                    )),
+            );
+        // The override keeps the number format and what to show, but moves.
+        assert!(
+            xml.contains(r#"<c:numFmt formatCode="0.0" sourceLinked="0"/><c:dLblPos val="outEnd"/><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="1"/>"#),
+            "{xml}"
+        );
+        // The group after the overrides repeats the chart-wide settings.
+        assert!(
+            xml.contains(r#"</c:dLbl><c:numFmt formatCode="0.0""#),
+            "{xml}"
+        );
+        assert!(xml.contains(r#"<c:dLblPos val="inEnd"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn a_label_style_moves_onto_the_run_for_custom_text() {
+        let xml = render(ChartSpec::new(ChartKind::ColumnClustered).series(
+            series().with_point_label(
+                0,
+                PointLabel::text("Top").style(TextStyle::new().bold(true).color("8E0DD1")),
+            ),
+        ));
+        assert!(xml.contains(r#"<a:rPr lang="en-US" b="1">"#), "{xml}");
+        assert!(!xml.contains("<c:txPr>"), "{xml}");
+    }
+
+    #[test]
+    fn labels_come_after_points_and_before_trendlines() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered).series(
+                series()
+                    .with_point(0, PointFormat::new().color("0090B2"))
+                    .with_point_label(0, PointLabel::hidden())
+                    .with_trendline(Trendline::new(TrendlineKind::Linear)),
+            ),
+        );
+        let dpt = xml.find("<c:dPt>").expect("dPt");
+        let dlbls = xml.find("<c:dLbls>").expect("dLbls");
+        let trend = xml.find("<c:trendline>").expect("trendline");
+        assert!(dpt < dlbls && dlbls < trend, "{xml}");
+    }
+
+    #[test]
+    fn points_are_written_in_index_order_whatever_order_they_were_added() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered).series(
+                series()
+                    .with_point_label(3, PointLabel::hidden())
+                    .with_point_label(1, PointLabel::hidden()),
+            ),
+        );
+        assert!(
+            xml.find(r#"<c:idx val="1"/><c:delete"#) < xml.find(r#"<c:idx val="3"/><c:delete"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_later_label_for_the_same_point_replaces_the_earlier() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered).series(
+                series()
+                    .with_point_label(0, PointLabel::hidden())
+                    .with_point_label(0, PointLabel::text("kept")),
+            ),
+        );
+        assert!(
+            xml.contains("kept") && !xml.contains(r#"<c:delete val="1"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_label_position_the_kind_does_not_allow_is_refused() {
+        let error = ChartSpec::new(ChartKind::Area)
+            .series(
+                series().with_point_label(0, PointLabel::text("x").at(DataLabelPosition::Above)),
+            )
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::InvalidDataLabelPosition { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_label_that_is_both_hidden_and_has_text_is_refused() {
+        let mut label = PointLabel::hidden();
+        label.text = Some("x".to_string());
+        let error = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series().with_point_label(0, label))
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::Unsupported { .. })),
+            "{error:?}"
+        );
+    }
 }

@@ -2,7 +2,8 @@
 #![cfg(feature = "serde")]
 
 use ooxml_chart::{
-    Axis, ChartKind, ChartSpec, DataLabels, LegendPosition, Plot, Series, SeriesName, TextStyle,
+    Axis, ChartKind, ChartSpec, DataLabels, LegendPosition, MarkerSymbol, Plot, PointFormat,
+    PointLabel, Series, SeriesName, TextStyle,
 };
 
 const TERSE: &str = r#"{
@@ -59,6 +60,19 @@ fn a_rich_spec_survives_a_round_trip() {
                 ))
                 .on_secondary_axis(),
         );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
+fn point_overrides_survive_a_round_trip() {
+    let spec = ChartSpec::new(ChartKind::LineMarkers).series(
+        Series::new(SeriesName::Literal("A".into()), "'S'!$B$2:$B$5")
+            .with_point(1, PointFormat::new().marker(MarkerSymbol::Diamond, 9))
+            .with_point_label(1, PointLabel::text("Peak"))
+            .with_point_label(2, PointLabel::hidden()),
+    );
     let json = serde_json::to_string(&spec).expect("serialises");
     let back: ChartSpec = serde_json::from_str(&json).expect("parses");
     assert_eq!(back, spec);

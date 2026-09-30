@@ -12,7 +12,8 @@
 use crate::error::ChartError;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, MarkerSymbol,
-    Paint, Plot, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    Paint, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline,
+    TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -303,6 +304,24 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
         if let Some(explosion) = point.explosion {
             check_range("explosion", i64::from(explosion), 0, 400)?;
         }
+        if let Some((_, size)) = point.marker {
+            check_range("marker size", i64::from(size), 2, 72)?;
+        }
+    }
+    for (_, label) in &series.point_labels {
+        if label.hidden && label.text.is_some() {
+            return unsupported("a data label that is both hidden and has text".to_string());
+        }
+        if let Some(style) = &label.style {
+            check_text_style(style)?;
+        }
+        if let Some(position) = label.position {
+            if !label_positions(plot.family).contains(&position) {
+                return Err(ChartError::InvalidDataLabelPosition {
+                    position: position.name(),
+                });
+            }
+        }
     }
     if !series.trendlines.is_empty() {
         let allowed = match plot.family {
@@ -481,7 +500,14 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
         .series
         .iter()
         .enumerate()
-        .map(|(offset, series)| series_xml(plot, first_index + offset, series))
+        .map(|(offset, series)| {
+            series_xml(
+                plot,
+                first_index + offset,
+                series,
+                spec.data_labels.as_ref(),
+            )
+        })
         .collect();
     let labels = spec
         .data_labels
@@ -546,6 +572,11 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
 }
 
 fn data_labels_xml(labels: &DataLabels) -> String {
+    format!("<c:dLbls>{}</c:dLbls>", label_group_xml(labels))
+}
+
+/// The settings common to a `<c:dLbls>` and a `<c:dLbl>`, in schema order.
+fn label_group_xml(labels: &DataLabels) -> String {
     let number_format = labels
         .number_format
         .as_ref()
@@ -566,12 +597,85 @@ fn data_labels_xml(labels: &DataLabels) -> String {
         .map(|position| format!(r#"<c:dLblPos val="{}"/>"#, position.code()))
         .unwrap_or_default();
     format!(
-        r#"<c:dLbls>{number_format}{tx_pr}{position}<c:showLegendKey val="0"/><c:showVal val="{}"/><c:showCatName val="{}"/><c:showSerName val="{}"/><c:showPercent val="{}"/><c:showBubbleSize val="0"/></c:dLbls>"#,
+        r#"{number_format}{tx_pr}{position}{}"#,
+        label_flags_xml(labels)
+    )
+}
+
+fn label_flags_xml(labels: &DataLabels) -> String {
+    format!(
+        r#"<c:showLegendKey val="0"/><c:showVal val="{}"/><c:showCatName val="{}"/><c:showSerName val="{}"/><c:showPercent val="{}"/><c:showBubbleSize val="0"/>"#,
         i32::from(labels.value),
         i32::from(labels.category),
         i32::from(labels.series),
         i32::from(labels.percent),
     )
+}
+
+/// A series' own `<c:dLbls>`, written only when it has point overrides.
+///
+/// A series-level `<c:dLbls>` replaces the chart-wide one for that series
+/// outright, so the group after the `<c:dLbl>` entries repeats the chart-wide
+/// settings — or, with none, switches labels off — for the points that are not
+/// overridden.
+fn series_labels_xml(series: &Series, chart_wide: Option<&DataLabels>) -> String {
+    if series.point_labels.is_empty() {
+        return String::new();
+    }
+    let mut overrides: Vec<_> = series.point_labels.iter().collect();
+    overrides.sort_by_key(|(index, _)| *index);
+    // A point with nothing said about what to show falls back to the
+    // chart-wide choice, or to its value when the chart has no labels.
+    let inherited = chart_wide.cloned().unwrap_or_else(DataLabels::values);
+    let entries: String = overrides
+        .into_iter()
+        .map(|(index, label)| point_label_xml(*index, label, &inherited))
+        .collect();
+    let group = chart_wide
+        .map(label_group_xml)
+        .unwrap_or_else(|| label_flags_xml(&DataLabels::default()));
+    format!("<c:dLbls>{entries}{group}</c:dLbls>")
+}
+
+fn point_label_xml(index: usize, label: &PointLabel, inherited: &DataLabels) -> String {
+    if label.hidden {
+        return format!(r#"<c:dLbl><c:idx val="{index}"/><c:delete val="1"/></c:dLbl>"#);
+    }
+    let style = label.style.as_ref().or(inherited.style.as_ref());
+    let text = label
+        .text
+        .as_ref()
+        .map(|text| {
+            let run_props = style
+                .map(|style| run_props("rPr", r#" lang="en-US""#, style))
+                .unwrap_or_default();
+            format!(
+                "<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r>{run_props}<a:t>{}</a:t></a:r></a:p></c:rich></c:tx>",
+                escape(text)
+            )
+        })
+        .unwrap_or_default();
+    // Custom text carries its font on the run; otherwise it is the label's
+    // default text properties.
+    let body = DataLabels {
+        position: label.position.or(inherited.position),
+        style: style.filter(|_| label.text.is_none()).cloned(),
+        ..inherited.clone()
+    };
+    let flags_and_format = {
+        let group = label_group_xml(&body);
+        // Custom text is shown whatever the flags say, but Excel writes at
+        // least the value flag alongside it.
+        if label.text.is_some() && !(body.value || body.category || body.series || body.percent) {
+            label_group_xml(&DataLabels {
+                value: true,
+                ..body
+            })
+        } else {
+            group
+        }
+    };
+    format!(r#"<c:dLbl><c:idx val="{index}"/>{text}{flags_and_format}</c:dLbl>"#)
 }
 
 // --- series ----------------------------------------------------------------
@@ -583,7 +687,12 @@ fn solid(rgb: &str) -> String {
     )
 }
 
-fn series_xml(plot: &PlotRef<'_>, index: usize, series: &Series) -> String {
+fn series_xml(
+    plot: &PlotRef<'_>,
+    index: usize,
+    series: &Series,
+    chart_wide_labels: Option<&DataLabels>,
+) -> String {
     let name = match &series.name {
         SeriesName::Literal(text) => format!("<c:tx><c:v>{}</c:v></c:tx>", escape(text)),
         SeriesName::Reference(reference) => format!(
@@ -592,7 +701,11 @@ fn series_xml(plot: &PlotRef<'_>, index: usize, series: &Series) -> String {
         ),
     };
     let shape = shape_xml(plot, series);
-    let points = points_xml(plot, series);
+    let points = format!(
+        "{}{}",
+        points_xml(plot, series),
+        series_labels_xml(series, chart_wide_labels)
+    );
     let trendlines: String = series.trendlines.iter().map(trendline_xml).collect();
     let values = format!(
         "<c:numRef><c:f>{}</c:f>{}</c:numRef>",
@@ -738,20 +851,26 @@ fn marker_xml(kind: ChartKind, series: &Series, color: Option<&str>) -> String {
 }
 
 /// `<c:dPt>` elements, in index order, for the kinds where a point has a shape
-/// of its own.
+/// of its own: a slice or bar, or on line-like kinds its marker.
 fn points_xml(plot: &PlotRef<'_>, series: &Series) -> String {
-    if !matches!(
+    let round = matches!(plot.family, Family::Pie | Family::Doughnut);
+    let shaped = round || matches!(plot.family, Family::Bar { .. } | Family::Bubble);
+    let marked = matches!(
         plot.family,
-        Family::Bar { .. } | Family::Pie | Family::Doughnut | Family::Bubble
-    ) {
+        Family::Line | Family::Scatter | Family::Radar { filled: false }
+    );
+    if !shaped && !marked {
         return String::new();
     }
-    let round = matches!(plot.family, Family::Pie | Family::Doughnut);
     let mut points: Vec<_> = series.points.iter().collect();
     points.sort_by_key(|(index, _)| *index);
     points
         .into_iter()
-        .map(|(index, point)| {
+        .filter_map(|(index, point)| {
+            if marked {
+                let marker = point_marker_xml(point)?;
+                return Some(format!(r#"<c:dPt><c:idx val="{index}"/>{marker}</c:dPt>"#));
+            }
             let explosion = point
                 .explosion
                 .filter(|_| round)
@@ -762,9 +881,44 @@ fn points_xml(plot: &PlotRef<'_>, series: &Series) -> String {
                 .as_deref()
                 .map(|rgb| format!("<c:spPr>{}</c:spPr>", solid(rgb)))
                 .unwrap_or_default();
-            format!(r#"<c:dPt><c:idx val="{index}"/>{explosion}{fill}</c:dPt>"#)
+            // A point that changes nothing here (e.g. it only sets a marker)
+            // would be an empty `<c:dPt>`.
+            if explosion.is_empty() && fill.is_empty() {
+                return None;
+            }
+            Some(format!(
+                r#"<c:dPt><c:idx val="{index}"/>{explosion}{fill}</c:dPt>"#
+            ))
         })
         .collect()
+}
+
+/// The `<c:marker>` for one point of a line-like series, or `None` if the point
+/// says nothing about its marker.
+fn point_marker_xml(point: &PointFormat) -> Option<String> {
+    if point.marker.is_none() && point.color.is_none() {
+        return None;
+    }
+    let shape = point
+        .marker
+        .map(|(symbol, size)| {
+            format!(
+                r#"<c:symbol val="{}"/><c:size val="{size}"/>"#,
+                symbol.code()
+            )
+        })
+        .unwrap_or_default();
+    let fill = point
+        .color
+        .as_deref()
+        .map(|rgb| {
+            let rgb = rgb.to_ascii_uppercase();
+            format!(
+                r#"<c:spPr><a:solidFill><a:srgbClr val="{rgb}"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="{rgb}"/></a:solidFill></a:ln></c:spPr>"#
+            )
+        })
+        .unwrap_or_default();
+    Some(format!("<c:marker>{shape}{fill}</c:marker>"))
 }
 
 fn trendline_xml(trendline: &Trendline) -> String {
