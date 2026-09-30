@@ -323,6 +323,26 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             }
         }
     }
+    let cells = spec.data_labels.as_ref().is_some_and(|l| l.cells);
+    for plot in plots {
+        for series in plot.series {
+            match (&series.label_range, cells) {
+                (Some(reference), _) if reference.trim().is_empty() => {
+                    return unsupported("an empty label range".to_string());
+                }
+                (Some(_), false) => {
+                    return unsupported("a label range with no cell labels".to_string());
+                }
+                (None, true) => {
+                    return unsupported("cell labels on a series with no label range".to_string());
+                }
+                (None, false) if series.label_range_cache.is_some() => {
+                    return unsupported("a label range cache with no label range".to_string());
+                }
+                _ => {}
+            }
+        }
+    }
     let leader_lines = spec.data_labels.as_ref().is_some_and(|l| l.leader_lines);
     if leader_lines && !matches!(primary.family, Family::Pie | Family::Doughnut) {
         return unsupported(format!("leader lines on {:?}", primary.kind));
@@ -885,9 +905,40 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
 
 fn data_labels_xml(labels: &DataLabels) -> String {
     format!(
-        "<c:dLbls>{}{}</c:dLbls>",
+        "<c:dLbls>{}{}{}</c:dLbls>",
         label_group_xml(labels),
-        leader_lines_xml(labels)
+        leader_lines_xml(labels),
+        cells_ext_xml(labels)
+    )
+}
+
+const C15: &str = "http://schemas.microsoft.com/office/drawing/2012/chart";
+
+/// The Office 2013 extension that turns on "Value From Cells". It ends a
+/// `<c:dLbls>` or a `<c:dLbl>`.
+fn cells_ext_xml(labels: &DataLabels) -> String {
+    if labels.cells {
+        format!(
+            r#"<c:extLst><c:ext uri="{{CE6537A1-D6FC-4f65-9D91-7224C49458BB}}" xmlns:c15="{C15}"><c15:showDataLabelsRange val="1"/></c:ext></c:extLst>"#
+        )
+    } else {
+        String::new()
+    }
+}
+
+/// A series' label range, the last thing in a `<c:ser>`.
+fn label_range_xml(series: &Series) -> String {
+    let Some(reference) = &series.label_range else {
+        return String::new();
+    };
+    let cache = series
+        .label_range_cache
+        .as_deref()
+        .map(|labels| str_cache(labels).replace("c:strCache", "c15:dlblRangeCache"))
+        .unwrap_or_default();
+    format!(
+        r#"<c:extLst><c:ext uri="{{02D57815-91ED-43cb-92C2-25804820EDAC}}" xmlns:c15="{C15}"><c15:datalabelsRange><c15:f>{}</c15:f>{cache}</c15:datalabelsRange></c:ext></c:extLst>"#,
+        escape(reference)
     )
 }
 
@@ -971,7 +1022,14 @@ fn series_labels_xml(series: &Series, chart_wide: Option<&DataLabels>) -> String
         .map(|(index, label)| point_label_xml(*index, label, &inherited))
         .collect();
     let group = chart_wide
-        .map(|labels| format!("{}{}", label_group_xml(labels), leader_lines_xml(labels)))
+        .map(|labels| {
+            format!(
+                "{}{}{}",
+                label_group_xml(labels),
+                leader_lines_xml(labels),
+                cells_ext_xml(labels)
+            )
+        })
         .unwrap_or_else(|| label_flags_xml(&DataLabels::default()));
     format!("<c:dLbls>{entries}{group}</c:dLbls>")
 }
@@ -1014,7 +1072,10 @@ fn point_label_xml(index: usize, label: &PointLabel, inherited: &DataLabels) -> 
             group
         }
     };
-    format!(r#"<c:dLbl><c:idx val="{index}"/>{text}{flags_and_format}</c:dLbl>"#)
+    format!(
+        r#"<c:dLbl><c:idx val="{index}"/>{text}{flags_and_format}{}</c:dLbl>"#,
+        cells_ext_xml(inherited)
+    )
 }
 
 // --- series ----------------------------------------------------------------
@@ -1091,7 +1152,8 @@ fn series_xml(
             smooth_xml(series)
         };
         return format!(
-            "{head}{shape}{points}{trendlines}{error_bars}{x}<c:yVal>{values}</c:yVal>{tail}</c:ser>"
+            "{head}{shape}{points}{trendlines}{error_bars}{x}<c:yVal>{values}</c:yVal>{tail}{}</c:ser>",
+            label_range_xml(series)
         );
     }
 
@@ -1115,7 +1177,7 @@ fn series_xml(
     } else {
         String::new()
     };
-    format!("{head}{shape}{points}{trendlines}{error_bars}{categories}<c:val>{values}</c:val>{smooth}</c:ser>")
+    format!("{head}{shape}{points}{trendlines}{error_bars}{categories}<c:val>{values}</c:val>{smooth}{}</c:ser>", label_range_xml(series))
 }
 
 fn smooth_xml(series: &Series) -> String {

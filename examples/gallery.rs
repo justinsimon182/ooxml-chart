@@ -434,6 +434,22 @@ fn main() {
                 .series(series("Share", "B", "8E0DD1")),
         ),
         (
+            "label_cells",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Labels from cells")
+                .data_labels(DataLabels::default().with_cells())
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_label_range("'Sheet1'!$D$2:$D$5")
+                        .with_cached_label_range(vec![
+                            "Up".into(),
+                            "Flat".into(),
+                            "Down".into(),
+                            "Up".into(),
+                        ]),
+                ),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")

@@ -350,6 +350,14 @@ pub struct Series {
     /// Fitted lines drawn over the series.
     #[cfg_attr(feature = "serde", serde(default))]
     pub trendlines: Vec<Trendline>,
+    /// Cells whose text labels the points ("Value From Cells"), e.g.
+    /// `"'Sheet1'!$D$2:$D$5"`. Shown when the chart's [`DataLabels`] ask for
+    /// cell text.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub label_range: Option<String>,
+    /// The text of `label_range`, cached in the part.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub label_range_cache: Option<Vec<String>>,
 }
 
 impl Series {
@@ -370,6 +378,8 @@ impl Series {
             point_labels: Vec::new(),
             error_bars: Vec::new(),
             trendlines: Vec::new(),
+            label_range: None,
+            label_range_cache: None,
         }
     }
 
@@ -407,6 +417,21 @@ impl Series {
     #[must_use]
     pub fn with_marker(mut self, symbol: MarkerSymbol, size: u8) -> Self {
         self.marker = Some((symbol, size));
+        self
+    }
+
+    /// Labels the points with the text of these cells. The chart's
+    /// [`DataLabels`] must ask for it with [`DataLabels::with_cells`].
+    #[must_use]
+    pub fn with_label_range(mut self, reference: impl Into<String>) -> Self {
+        self.label_range = Some(reference.into());
+        self
+    }
+
+    /// Caches the label range's text in the part. Needs `with_label_range`.
+    #[must_use]
+    pub fn with_cached_label_range(mut self, labels: Vec<String>) -> Self {
+        self.label_range_cache = Some(labels);
         self
     }
 
@@ -1466,6 +1491,9 @@ pub struct DataLabels {
     /// Draw leader lines from labels that sit away from their slice. Pie and
     /// doughnut only.
     pub leader_lines: bool,
+    /// Show the text of each series' label range. Every series then needs
+    /// [`Series::with_label_range`].
+    pub cells: bool,
 }
 
 impl DataLabels {
@@ -1495,6 +1523,13 @@ impl DataLabels {
     #[must_use]
     pub fn with_percent(mut self) -> Self {
         self.percent = true;
+        self
+    }
+
+    /// Also show the text of each series' label range ("Value From Cells").
+    #[must_use]
+    pub fn with_cells(mut self) -> Self {
+        self.cells = true;
         self
     }
 

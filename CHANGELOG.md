@@ -30,6 +30,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Data label text from cells ("Value From Cells"): `Series::with_label_range`
+  (and `with_cached_label_range`) plus `DataLabels::with_cells` write the
+  Office 2013 `c15:datalabelsRange` and `c15:showDataLabelsRange` extensions.
+  A range nobody shows, cell labels on a series with no range, an empty range
+  and a cache with no range are refused.
 - Legend entry deletion: `ChartSpec::hide_legend_entry(index)` writes
   `<c:legendEntry>` with `<c:delete>`. Refused with no legend or for a series
   that does not exist.
