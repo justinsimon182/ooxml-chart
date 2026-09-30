@@ -198,6 +198,32 @@ fn label_cells_survive_a_round_trip() {
 }
 
 #[test]
+fn gradient_and_pattern_fills_survive_a_round_trip() {
+    use ooxml_chart::{AreaStyle, Gradient, Paint, Pattern, PatternKind};
+    let spec = ChartSpec::new(ChartKind::ColumnClustered)
+        .series(
+            Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5")
+                .with_fill(Paint::Gradient(Gradient::linear(
+                    45,
+                    [(0, "8E0DD1"), (100, "FFFFFF")],
+                )))
+                .with_point(
+                    1,
+                    PointFormat::new().fill(Paint::Pattern(Pattern::new(
+                        PatternKind::SmallCheckerBoard,
+                        "000000",
+                        "FFFFFF",
+                    ))),
+                ),
+        )
+        .chart_area(AreaStyle::new().fill_paint(Paint::Color("F8F6F0".into())));
+    let json = serde_json::to_string(&spec).expect("serialises");
+    assert!(json.contains("small_checker_board"), "{json}");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

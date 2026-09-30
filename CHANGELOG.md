@@ -30,6 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Gradient and pattern fills: `Paint` gains `Gradient` (two to ten stops at an
+  angle) and `Pattern` (all 54 preset patterns, two colours). They work on chart
+  and plot areas and borders (`AreaStyle::fill_paint`, `border_paint`), axis lines
+  (`Axis::line_paint`), series (`Series::with_fill`, bars, areas, bubbles and
+  filled radar) and points (`PointFormat::fill`). Bad stops, angles and colours
+  are refused with `ChartError::InvalidFill` or `InvalidColor`. `Paint` is now
+  `#[non_exhaustive]`.
 - CI job `schema` validates every gallery part against the ECMA-376 transitional
   schemas, vendored in `scripts/schemas` (test-only, excluded from the published
   crate).

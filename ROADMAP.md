@@ -32,7 +32,7 @@ does not read, write, or zip `.xlsx` packages.
 | Error bars | Done — `ErrorBars`; fixed, percentage, std dev, std error, custom; x and y on scatter and bubble. `errDir` is left out on bar and column, written elsewhere |
 | Per-point marker and data-label overrides | Done — `PointFormat::marker`, `PointLabel` (hide, custom text, position, font) |
 | Series-name cache for referenced names | **Open** — needs a `SeriesName` change |
-| Gradient and pattern fills | **Open** |
+| Gradient and pattern fills | Done (`Paint::Gradient`, `Paint::Pattern`) |
 
 ## Axes
 
@@ -83,7 +83,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 58 in all) validates against the
+date axis, and one drawing per anchor type â€” 60 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
