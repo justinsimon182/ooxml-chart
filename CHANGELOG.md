@@ -30,6 +30,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Mixed text-and-field data labels: `PointLabel::parts` takes `LabelPart::text`
+  and `LabelPart::field(LabelField::..)` (value, category name, series name,
+  percentage, cell range) and writes `<a:fld>` runs with the `c15` field-table
+  extension, so Excel keeps the fields live. Percentage is refused off pie and
+  doughnut, a cell-range field without a label range, and parts combined with
+  `text` or `hidden`.
 - `Series::with_cached_name` caches the text of a referenced series name in
   `<c:strCache>`, as categories and values already could. Refused on a literal
   name.

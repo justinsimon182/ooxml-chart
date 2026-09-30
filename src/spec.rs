@@ -1897,6 +1897,9 @@ pub struct PointLabel {
     pub hidden: bool,
     /// Replace the label with this literal text.
     pub text: Option<String>,
+    /// Replace the label with a mix of literal text and live fields, such as
+    /// `[CATEGORY NAME]: [VALUE]`. Cannot be combined with `text`.
+    pub parts: Vec<LabelPart>,
     /// Where to put this label. Checked against the chart kind like
     /// [`DataLabels::position`].
     pub position: Option<DataLabelPosition>,
@@ -1921,6 +1924,15 @@ impl PointLabel {
         }
     }
 
+    /// A label built from literal text and live fields, in order. Excel keeps
+    /// the fields up to date as the data changes.
+    pub fn parts(parts: impl IntoIterator<Item = LabelPart>) -> Self {
+        Self {
+            parts: parts.into_iter().collect(),
+            ..Self::default()
+        }
+    }
+
     /// Places this label.
     #[must_use]
     pub fn at(mut self, position: DataLabelPosition) -> Self {
@@ -1933,6 +1945,62 @@ impl PointLabel {
     pub fn style(mut self, style: TextStyle) -> Self {
         self.style = Some(style);
         self
+    }
+}
+
+/// A live value a data label can show inside its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum LabelField {
+    /// The point's value.
+    Value,
+    /// The point's category name.
+    CategoryName,
+    /// The series name.
+    SeriesName,
+    /// The point's share of the whole. Pie and doughnut only.
+    Percentage,
+    /// The point's cell from the series' label range. Needs
+    /// [`Series::with_label_range`].
+    CellRange,
+}
+
+impl LabelField {
+    /// The `type` code and the placeholder text Excel writes.
+    pub(crate) fn code(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Value => ("VALUE", "[VALUE]"),
+            Self::CategoryName => ("CATEGORYNAME", "[CATEGORY NAME]"),
+            Self::SeriesName => ("SERIESNAME", "[SERIES NAME]"),
+            Self::Percentage => ("PERCENTAGE", "[PERCENTAGE]"),
+            Self::CellRange => ("CELLRANGE", "[CELLRANGE]"),
+        }
+    }
+}
+
+/// One piece of a mixed data label: literal text or a live field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum LabelPart {
+    /// Literal text, such as a separator.
+    Text(String),
+    /// A live field.
+    Field(LabelField),
+}
+
+impl LabelPart {
+    /// Literal text.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Text(text.into())
+    }
+
+    /// A live field.
+    pub fn field(field: LabelField) -> Self {
+        Self::Field(field)
     }
 }
 

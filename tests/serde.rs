@@ -236,6 +236,25 @@ fn a_cached_series_name_survives_a_round_trip() {
 }
 
 #[test]
+fn mixed_label_parts_survive_a_round_trip() {
+    use ooxml_chart::{LabelField, LabelPart};
+    let spec = ChartSpec::new(ChartKind::Pie).series(
+        Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5").with_point_label(
+            0,
+            PointLabel::parts([
+                LabelPart::field(LabelField::CategoryName),
+                LabelPart::text(" - "),
+                LabelPart::field(LabelField::Percentage),
+            ]),
+        ),
+    );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    assert!(json.contains("category_name"), "{json}");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

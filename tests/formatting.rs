@@ -2317,3 +2317,114 @@ mod name_cache {
         assert!(matches!(result, Err(ChartError::Unsupported { .. })));
     }
 }
+
+// --- Mixed text-and-field data labels -----------------------------------------------
+
+mod label_fields {
+    use super::*;
+    use ooxml_chart::{DataLabels, LabelField, LabelPart, PointLabel};
+
+    fn mixed() -> PointLabel {
+        PointLabel::parts([
+            LabelPart::field(LabelField::CategoryName),
+            LabelPart::text(": "),
+            LabelPart::field(LabelField::Value),
+        ])
+    }
+
+    #[test]
+    fn fields_and_text_become_runs_and_fields_in_order() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .data_labels(DataLabels::values())
+                .series(series().with_point_label(1, mixed())),
+        );
+        assert!(
+            xml.contains(r#"<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:fld id="{00000000-0001-4000-8000-000000000000}" type="CATEGORYNAME"><a:rPr lang="en-US"/><a:pPr/><a:t>[CATEGORY NAME]</a:t></a:fld><a:r><a:rPr lang="en-US"/><a:t>: </a:t></a:r><a:fld id="{00000000-0001-4000-8000-000000000002}" type="VALUE"><a:rPr lang="en-US"/><a:pPr/><a:t>[VALUE]</a:t></a:fld></a:p></c:rich></c:tx>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_label_with_fields_carries_the_field_table_extension() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_point_label(0, mixed())),
+        );
+        assert!(
+            xml.contains(r#"<c15:dlblFieldTable/><c15:showDataLabelsRange val="0"/></c:ext></c:extLst></c:dLbl>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn text_only_parts_need_no_extension() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_point_label(0, PointLabel::parts([LabelPart::text("Peak")]))),
+        );
+        assert!(xml.contains("<a:t>Peak</a:t>"), "{xml}");
+        assert!(!xml.contains("dlblFieldTable"), "{xml}");
+    }
+
+    #[test]
+    fn text_is_escaped_and_ids_differ_per_series_and_point() {
+        let label = PointLabel::parts([
+            LabelPart::text("a & b"),
+            LabelPart::field(LabelField::SeriesName),
+        ]);
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .series(series().with_point_label(2, label.clone()))
+                .series(series().with_point_label(2, label)),
+        );
+        assert!(xml.contains("a &amp; b"), "{xml}");
+        assert!(xml.contains(r#"id="{00000000-0002-4000-8000-000000000001}" type="SERIESNAME""#));
+        assert!(xml.contains(r#"id="{00000001-0002-4000-8000-000000000001}" type="SERIESNAME""#));
+    }
+
+    #[test]
+    fn a_percentage_field_works_on_a_pie_only() {
+        let label = PointLabel::parts([LabelPart::field(LabelField::Percentage)]);
+        let pie = ChartSpec::new(ChartKind::Pie)
+            .series(series().with_point_label(0, label.clone()))
+            .render();
+        assert!(pie.is_ok());
+        let bar = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series().with_point_label(0, label))
+            .render();
+        assert!(matches!(bar, Err(ChartError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn a_cell_range_field_needs_a_label_range() {
+        let label = PointLabel::parts([LabelPart::field(LabelField::CellRange)]);
+        let without = ChartSpec::new(ChartKind::Line)
+            .series(series().with_point_label(0, label.clone()))
+            .render();
+        assert!(matches!(without, Err(ChartError::Unsupported { .. })));
+        let with = ChartSpec::new(ChartKind::Line)
+            .data_labels(DataLabels::values().with_cells())
+            .series(
+                series()
+                    .with_label_range("'S'!$D$3:$D$5")
+                    .with_point_label(0, label),
+            )
+            .render();
+        assert!(with.is_ok());
+    }
+
+    #[test]
+    fn parts_with_text_or_hidden_are_refused() {
+        let mut both = mixed();
+        both.text = Some("x".into());
+        let mut hidden = mixed();
+        hidden.hidden = true;
+        for label in [both, hidden] {
+            let result = ChartSpec::new(ChartKind::Line)
+                .series(series().with_point_label(0, label))
+                .render();
+            assert!(matches!(result, Err(ChartError::Unsupported { .. })));
+        }
+    }
+}
