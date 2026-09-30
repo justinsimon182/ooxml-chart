@@ -1,10 +1,11 @@
 """Validate every part the gallery example writes against the ECMA-376 schemas.
 
     cargo run --example gallery -- out
-    python scripts/validate_gallery.py out path/to/ISO-IEC29500-4_2016
+    python scripts/validate_gallery.py out scripts/schemas
 
-The schema directory is the transitional (ISO/IEC 29500-4) set holding
-`dml-chart.xsd` and `dml-spreadsheetDrawing.xsd`. It is not vendored here.
+The schema directory must hold `dml-chart.xsd` and `dml-spreadsheetDrawing.xsd`
+and what they import. `scripts/schemas` vendors exactly that subset of the
+transitional (ISO/IEC 29500-4) set; CI runs this script against it.
 Requires `lxml`. Exits non-zero if any part is invalid, which is the signal
 that Excel would repair or refuse it.
 """

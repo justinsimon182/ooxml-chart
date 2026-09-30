@@ -1,6 +1,7 @@
 [package]
 name = "ooxml-chart"
 description = "Author OOXML (Excel) chart parts and their drawing anchors from a declarative specification."
+exclude = ["/scripts", "/.github"]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"

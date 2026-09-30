@@ -88,10 +88,10 @@ ECMA-376 transitional schemas, including element order:
 
 ```sh
 cargo run --example gallery -- out
-python scripts/validate_gallery.py out path/to/ISO-IEC29500-4_2016
+python scripts/validate_gallery.py out scripts/schemas
 ```
 
-The schemas are not vendored, so this is a manual step and not in CI.
+The schemas are vendored in `scripts/schemas`, and the `schema` CI job runs this.
 
 Schema-valid is not the same as Excel-accepted. Excel also enforces rules the
 XSD cannot express â€” which label positions suit which chart kind, which
@@ -102,7 +102,7 @@ Excel is the signal to add a test for what it complained about.
 | Item | Status |
 | --- | --- |
 | Schema validation of the gallery | Done â€” manual script |
-| Schema validation in CI | **Open** â€” needs the schemas vendored or fetched |
+| Schema validation in CI | Done â€” `schema` job, schemas vendored in `scripts/schemas` |
 | Round-trip through a real Excel install | **Open** |
 
 ## Ground rules for new features

@@ -30,6 +30,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- CI job `schema` validates every gallery part against the ECMA-376 transitional
+  schemas, vendored in `scripts/schemas` (test-only, excluded from the published
+  crate).
 - Data label text from cells ("Value From Cells"): `Series::with_label_range`
   (and `with_cached_label_range`) plus `DataLabels::with_cells` write the
   Office 2013 `c15:datalabelsRange` and `c15:showDataLabelsRange` extensions.

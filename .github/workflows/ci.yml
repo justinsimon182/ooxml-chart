@@ -34,3 +34,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --all-features
+
+  schema:
+    # Every gallery part must validate against the ECMA-376 schemas: element
+    # order is the first thing Excel repairs or refuses.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install lxml
+      - run: cargo run --example gallery --all-features -- gallery
+      - run: python scripts/validate_gallery.py gallery scripts/schemas
