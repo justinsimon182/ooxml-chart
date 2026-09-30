@@ -2,8 +2,8 @@
 #![cfg(feature = "serde")]
 
 use ooxml_chart::{
-    Axis, ChartKind, ChartSpec, DataLabels, LegendPosition, MarkerSymbol, Plot, PointFormat,
-    PointLabel, Series, SeriesName, TextStyle,
+    Axis, ChartKind, ChartSpec, DataLabels, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues,
+    LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle,
 };
 
 const TERSE: &str = r#"{
@@ -76,6 +76,36 @@ fn point_overrides_survive_a_round_trip() {
     let json = serde_json::to_string(&spec).expect("serialises");
     let back: ChartSpec = serde_json::from_str(&json).expect("parses");
     assert_eq!(back, spec);
+}
+
+#[test]
+fn error_bars_survive_a_round_trip_and_default_sensibly() {
+    let spec = ChartSpec::new(ChartKind::Scatter).series(
+        Series::new(SeriesName::Literal("A".into()), "'S'!$B$2:$B$5")
+            .with_error_bars(ErrorBars::new(ErrorAmount::Percentage(5.0)).along_x())
+            .with_error_bars(
+                ErrorBars::new(ErrorAmount::Custom {
+                    plus: Some(ErrorValues::Reference("'S'!$D$2:$D$5".into())),
+                    minus: None,
+                })
+                .side(ErrorBarSide::Plus)
+                .end_cap(false),
+            ),
+    );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+
+    // Only `amount` is required; the cap is on unless turned off.
+    let terse: ChartSpec = serde_json::from_str(
+        r#"{"kind":"line","series":[{"name":{"literal":"A"},"values":"S!$B$2:$B$5","error_bars":[{"amount":{"fixed":2.0}}]}]}"#,
+    )
+    .expect("parses");
+    assert!(terse.render().is_ok());
+    let value = serde_json::to_value(&terse).expect("serialises");
+    let bars = &value["series"][0]["error_bars"][0];
+    assert_eq!(bars["end_cap"], true);
+    assert_eq!(bars["side"], "both");
 }
 
 #[test]

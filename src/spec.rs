@@ -344,6 +344,9 @@ pub struct Series {
     /// Per-point data-label overrides, by zero-based point index.
     #[cfg_attr(feature = "serde", serde(default))]
     pub point_labels: Vec<(usize, PointLabel)>,
+    /// Error bars, at most one per direction.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub error_bars: Vec<ErrorBars>,
     /// Fitted lines drawn over the series.
     #[cfg_attr(feature = "serde", serde(default))]
     pub trendlines: Vec<Trendline>,
@@ -365,6 +368,7 @@ impl Series {
             bubble_sizes: None,
             points: Vec::new(),
             point_labels: Vec::new(),
+            error_bars: Vec::new(),
             trendlines: Vec::new(),
         }
     }
@@ -447,10 +451,169 @@ impl Series {
         self
     }
 
+    /// Draws error bars on the series. A scatter or bubble series takes one
+    /// per direction (see [`ErrorBars::along_x`]); any other at most one.
+    #[must_use]
+    pub fn with_error_bars(mut self, bars: ErrorBars) -> Self {
+        self.error_bars.push(bars);
+        self
+    }
+
     /// Draws a trendline over the series. Several may be added.
     #[must_use]
     pub fn with_trendline(mut self, trendline: Trendline) -> Self {
         self.trendlines.push(trendline);
+        self
+    }
+}
+
+/// Where the custom error amounts of [`ErrorAmount::Custom`] come from.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ErrorValues {
+    /// A worksheet range, one amount per point, e.g. `"'Sheet1'!$D$2:$D$5"`.
+    Reference(String),
+    /// Amounts written into the chart itself, one per point.
+    Literal(Vec<f64>),
+}
+
+/// How far an error bar reaches.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ErrorAmount {
+    /// The same amount, in value units, for every point.
+    Fixed(f64),
+    /// A percentage of each point's value.
+    Percentage(f64),
+    /// This many standard deviations of the series.
+    StdDev(f64),
+    /// The standard error of the series.
+    StdErr,
+    /// An amount per point, for each side in use. A side not in use (see
+    /// [`ErrorBarSide`]) may be left out; one that is in use must be given.
+    Custom {
+        /// Amounts above (or to the right of) each point.
+        #[cfg_attr(feature = "serde", serde(default))]
+        plus: Option<ErrorValues>,
+        /// Amounts below (or to the left of) each point.
+        #[cfg_attr(feature = "serde", serde(default))]
+        minus: Option<ErrorValues>,
+    },
+}
+
+/// Which side of a point an error bar extends to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ErrorBarSide {
+    /// Above and below.
+    #[default]
+    Both,
+    /// Above (or to the right) only.
+    Plus,
+    /// Below (or to the left) only.
+    Minus,
+}
+
+/// The direction an error bar points in. Only scatter and bubble series have
+/// an x direction; every other kind measures error along the value axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ErrorAxis {
+    /// Along the value axis.
+    #[default]
+    Y,
+    /// Along the x axis. Scatter and bubble only.
+    X,
+}
+
+#[cfg(feature = "serde")]
+fn default_true() -> bool {
+    true
+}
+
+/// Error bars on a series, set with [`Series::with_error_bars`].
+///
+/// Excel draws them on bar, column, line, area, scatter and bubble series and
+/// nowhere else; anything else is refused at render time, as is an x-direction
+/// bar on a kind with no x values to be uncertain about. A scatter or bubble
+/// series may carry one bar per direction; every other series at most one.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct ErrorBars {
+    /// How far the bars reach.
+    pub amount: ErrorAmount,
+    /// Which sides are drawn. Both by default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub side: ErrorBarSide,
+    /// The direction. Y by default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub axis: ErrorAxis,
+    /// Draw the small cap at the end of each bar. On by default.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub end_cap: bool,
+    /// Line colour as `RRGGBB`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub color: Option<String>,
+    /// Line width in points.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub width_pt: Option<f64>,
+}
+
+impl ErrorBars {
+    /// Error bars of `amount`, drawn both ways along y with end caps.
+    pub fn new(amount: ErrorAmount) -> Self {
+        Self {
+            amount,
+            side: ErrorBarSide::Both,
+            axis: ErrorAxis::Y,
+            end_cap: true,
+            color: None,
+            width_pt: None,
+        }
+    }
+
+    /// Draws only the given side.
+    #[must_use]
+    pub fn side(mut self, side: ErrorBarSide) -> Self {
+        self.side = side;
+        self
+    }
+
+    /// Points the bars along x. Scatter and bubble only.
+    #[must_use]
+    pub fn along_x(mut self) -> Self {
+        self.axis = ErrorAxis::X;
+        self
+    }
+
+    /// Turns the end caps on or off.
+    #[must_use]
+    pub fn end_cap(mut self, on: bool) -> Self {
+        self.end_cap = on;
+        self
+    }
+
+    /// Sets the line colour, six hex digits without `#`.
+    #[must_use]
+    pub fn color(mut self, rgb: impl Into<String>) -> Self {
+        self.color = Some(rgb.into());
+        self
+    }
+
+    /// Sets the line width in points.
+    #[must_use]
+    pub fn width(mut self, points: f64) -> Self {
+        self.width_pt = Some(points);
         self
     }
 }

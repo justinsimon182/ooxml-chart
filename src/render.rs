@@ -11,9 +11,9 @@
 
 use crate::error::ChartError;
 use crate::spec::{
-    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, MarkerSymbol,
-    Paint, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline,
-    TrendlineKind,
+    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, ErrorAmount,
+    ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, MarkerSymbol, Paint, Plot, PointFormat,
+    PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -323,6 +323,7 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
             }
         }
     }
+    check_error_bars(plot, series)?;
     if !series.trendlines.is_empty() {
         let allowed = match plot.family {
             Family::Bar { grouping, .. } => grouping == "clustered",
@@ -336,6 +337,84 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
         for trendline in &series.trendlines {
             check_trendline(trendline)?;
         }
+    }
+    Ok(())
+}
+
+fn check_error_bars(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
+    if series.error_bars.is_empty() {
+        return Ok(());
+    }
+    let has_x = matches!(plot.family, Family::Scatter | Family::Bubble);
+    if matches!(
+        plot.family,
+        Family::Pie | Family::Doughnut | Family::Radar { .. }
+    ) {
+        return unsupported(format!("error bars on {:?}", plot.kind));
+    }
+    let mut seen = [false; 2];
+    for bars in &series.error_bars {
+        if bars.axis == ErrorAxis::X && !has_x {
+            return unsupported(format!("x error bars on {:?}", plot.kind));
+        }
+        let slot = &mut seen[usize::from(bars.axis == ErrorAxis::X)];
+        if std::mem::replace(slot, true) {
+            return unsupported("two error bars in the same direction".to_string());
+        }
+        check_error_bar(bars)?;
+    }
+    Ok(())
+}
+
+fn check_error_bar(bars: &ErrorBars) -> Result<(), ChartError> {
+    let bad_amount = |field: &'static str| ChartError::OutOfRange {
+        field,
+        value: -1,
+        min: 0,
+        max: i64::MAX,
+    };
+    match &bars.amount {
+        ErrorAmount::Fixed(value) if !value.is_finite() || *value < 0.0 => {
+            return Err(bad_amount("error bar amount"));
+        }
+        ErrorAmount::Percentage(value) if !value.is_finite() || *value < 0.0 => {
+            return Err(bad_amount("error bar percentage"));
+        }
+        ErrorAmount::StdDev(value) if !value.is_finite() || *value <= 0.0 => {
+            return Err(bad_amount("error bar standard deviations"));
+        }
+        ErrorAmount::Custom { plus, minus } => {
+            let wanted = |side: ErrorBarSide| bars.side == ErrorBarSide::Both || bars.side == side;
+            for (present, needed, which) in [
+                (plus, wanted(ErrorBarSide::Plus), "plus"),
+                (minus, wanted(ErrorBarSide::Minus), "minus"),
+            ] {
+                match present {
+                    None if needed => {
+                        return unsupported(format!(
+                            "custom error bars drawn on the {which} side with no {which} amounts"
+                        ));
+                    }
+                    Some(ErrorValues::Reference(reference)) if reference.trim().is_empty() => {
+                        return unsupported("an empty custom error bar reference".to_string());
+                    }
+                    Some(ErrorValues::Literal(values))
+                        if values.is_empty()
+                            || values.iter().any(|v| !v.is_finite() || *v < 0.0) =>
+                    {
+                        return Err(bad_amount("custom error bar amount"));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+    if let Some(color) = &bars.color {
+        check_color(color)?;
+    }
+    if let Some(points) = bars.width_pt {
+        check_line_width(points)?;
     }
     Ok(())
 }
@@ -707,6 +786,7 @@ fn series_xml(
         series_labels_xml(series, chart_wide_labels)
     );
     let trendlines: String = series.trendlines.iter().map(trendline_xml).collect();
+    let error_bars = error_bars_xml(plot, series);
     let values = format!(
         "<c:numRef><c:f>{}</c:f>{}</c:numRef>",
         escape(&series.values),
@@ -751,7 +831,7 @@ fn series_xml(
             smooth_xml(series)
         };
         return format!(
-            "{head}{shape}{points}{trendlines}{x}<c:yVal>{values}</c:yVal>{tail}</c:ser>"
+            "{head}{shape}{points}{trendlines}{error_bars}{x}<c:yVal>{values}</c:yVal>{tail}</c:ser>"
         );
     }
 
@@ -775,7 +855,7 @@ fn series_xml(
     } else {
         String::new()
     };
-    format!("{head}{shape}{points}{trendlines}{categories}<c:val>{values}</c:val>{smooth}</c:ser>")
+    format!("{head}{shape}{points}{trendlines}{error_bars}{categories}<c:val>{values}</c:val>{smooth}</c:ser>")
 }
 
 fn smooth_xml(series: &Series) -> String {
@@ -919,6 +999,80 @@ fn point_marker_xml(point: &PointFormat) -> Option<String> {
         })
         .unwrap_or_default();
     Some(format!("<c:marker>{shape}{fill}</c:marker>"))
+}
+
+/// `<c:errBars>` elements, x before y.
+///
+/// `errDir` is written for every kind but bar and column, which measure along
+/// the value axis only and leave it out, as Excel does.
+fn error_bars_xml(plot: &PlotRef<'_>, series: &Series) -> String {
+    let mut bars: Vec<_> = series.error_bars.iter().collect();
+    bars.sort_by_key(|bars| bars.axis == ErrorAxis::Y);
+    bars.into_iter()
+        .map(|bars| {
+            let direction = match (plot.family, bars.axis) {
+                (Family::Bar { .. }, _) => "",
+                (_, ErrorAxis::X) => r#"<c:errDir val="x"/>"#,
+                (_, ErrorAxis::Y) => r#"<c:errDir val="y"/>"#,
+            };
+            let side = match bars.side {
+                ErrorBarSide::Both => "both",
+                ErrorBarSide::Plus => "plus",
+                ErrorBarSide::Minus => "minus",
+            };
+            let (kind, amounts) = match &bars.amount {
+                ErrorAmount::Fixed(value) => ("fixedVal", format!(r#"<c:val val="{value}"/>"#)),
+                ErrorAmount::Percentage(value) => {
+                    ("percentage", format!(r#"<c:val val="{value}"/>"#))
+                }
+                ErrorAmount::StdDev(value) => ("stdDev", format!(r#"<c:val val="{value}"/>"#)),
+                ErrorAmount::StdErr => ("stdErr", String::new()),
+                ErrorAmount::Custom { plus, minus } => {
+                    let part = |tag: &str, values: &Option<ErrorValues>, used: bool| {
+                        values
+                            .as_ref()
+                            .filter(|_| used)
+                            .map(|values| format!("<c:{tag}>{}</c:{tag}>", error_values_xml(values)))
+                            .unwrap_or_default()
+                    };
+                    let both = bars.side == ErrorBarSide::Both;
+                    let plus = part("plus", plus, both || bars.side == ErrorBarSide::Plus);
+                    let minus = part("minus", minus, both || bars.side == ErrorBarSide::Minus);
+                    ("cust", format!("{plus}{minus}"))
+                }
+            };
+            let cap = i32::from(!bars.end_cap);
+            let width = line_width_attr(bars.width_pt);
+            let sp_pr = if bars.color.is_some() || !width.is_empty() {
+                let fill = bars.color.as_deref().map(solid).unwrap_or_default();
+                format!(r#"<c:spPr><a:ln{width}>{fill}</a:ln></c:spPr>"#)
+            } else {
+                String::new()
+            };
+            format!(
+                r#"<c:errBars>{direction}<c:errBarType val="{side}"/><c:errValType val="{kind}"/><c:noEndCap val="{cap}"/>{amounts}{sp_pr}</c:errBars>"#
+            )
+        })
+        .collect()
+}
+
+fn error_values_xml(values: &ErrorValues) -> String {
+    match values {
+        ErrorValues::Reference(reference) => {
+            format!("<c:numRef><c:f>{}</c:f></c:numRef>", escape(reference))
+        }
+        ErrorValues::Literal(values) => {
+            let points: String = values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| format!(r#"<c:pt idx="{index}"><c:v>{value}</c:v></c:pt>"#))
+                .collect();
+            format!(
+                r#"<c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="{}"/>{points}</c:numLit>"#,
+                values.len()
+            )
+        }
+    }
 }
 
 fn trendline_xml(trendline: &Trendline) -> String {
