@@ -30,6 +30,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `Series::with_cached_name` caches the text of a referenced series name in
+  `<c:strCache>`, as categories and values already could. Refused on a literal
+  name.
 - Reference syntax validation: every series reference (values, categories,
   name, bubble sizes, label range, custom error bars) and every template
   replacement is checked with `ChartError::InvalidReference`. It accepts quoted

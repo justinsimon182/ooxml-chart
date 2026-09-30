@@ -348,6 +348,10 @@ pub struct Series {
     /// still draw the plot. Non-finite entries are written as blanks.
     #[cfg_attr(feature = "serde", serde(default))]
     pub values_cache: Option<Vec<f64>>,
+    /// The text of the referenced name cell, cached in the part. Needs a
+    /// [`SeriesName::Reference`].
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub name_cache: Option<String>,
     /// Reference to the bubble sizes. Required on a bubble chart, ignored
     /// elsewhere.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -388,6 +392,7 @@ impl Series {
             marker: None,
             categories_cache: None,
             values_cache: None,
+            name_cache: None,
             bubble_sizes: None,
             points: Vec::new(),
             point_labels: Vec::new(),
@@ -461,6 +466,15 @@ impl Series {
     #[must_use]
     pub fn with_cached_categories(mut self, labels: Vec<String>) -> Self {
         self.categories_cache = Some(labels);
+        self
+    }
+
+    /// Caches the text of a referenced series name in the part, so a viewer
+    /// that does not recalculate still shows it. Needs [`SeriesName::Reference`]:
+    /// anything else is refused at render time.
+    #[must_use]
+    pub fn with_cached_name(mut self, text: impl Into<String>) -> Self {
+        self.name_cache = Some(text.into());
         self
     }
 
