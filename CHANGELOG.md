@@ -30,6 +30,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Date-axis tick spacing: `Axis::date_major` and `date_minor` write
+  `majorUnit`/`majorTimeUnit` and the minor pair after `baseTimeUnit`. Refused
+  when fractional, finer than the axis unit, or set on a non-date axis.
 - Manual layout: `Layout`, `ChartSpec::plot_area_layout` and
   `ChartSpec::legend_layout` place and size the plot area (inner or outer) or
   the legend as fractions of the chart. New `ChartError::InvalidLayout`; a

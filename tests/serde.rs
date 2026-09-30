@@ -128,6 +128,21 @@ fn layouts_survive_a_round_trip_and_inner_defaults_on() {
 }
 
 #[test]
+fn date_tick_units_survive_a_round_trip() {
+    let spec = ChartSpec::new(ChartKind::Line)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
+        .category_axis(
+            Axis::default()
+                .dates(ooxml_chart::DateUnit::Days)
+                .date_major(2, ooxml_chart::DateUnit::Months)
+                .date_minor(1, ooxml_chart::DateUnit::Months),
+        );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn a_misspelt_field_is_an_error_not_silently_ignored() {
     let error =
         serde_json::from_str::<ChartSpec>(r#"{ "kind": "pie", "series": [], "titel": "oops" }"#)
