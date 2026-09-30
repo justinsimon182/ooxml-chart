@@ -173,6 +173,17 @@ fn data_tables_survive_a_round_trip_and_default_on() {
 }
 
 #[test]
+fn legend_entries_and_leader_lines_survive_a_round_trip() {
+    let spec = ChartSpec::new(ChartKind::Pie)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
+        .hide_legend_entry(2)
+        .data_labels(DataLabels::values().with_leader_lines());
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

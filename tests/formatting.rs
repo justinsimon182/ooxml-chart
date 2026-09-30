@@ -1734,3 +1734,107 @@ mod data_table {
         assert!(result.is_err());
     }
 }
+
+// --- Legend entries and leader lines ------------------------------------------------
+
+mod legend_entries {
+    use super::*;
+    use ooxml_chart::{DataLabels, LegendPosition};
+
+    fn two_series(kind: ChartKind) -> ChartSpec {
+        ChartSpec::new(kind).series(series()).series(series())
+    }
+
+    #[test]
+    fn a_hidden_entry_follows_the_position_and_precedes_the_overlay() {
+        let xml = render(two_series(ChartKind::Line).hide_legend_entry(1));
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<c:legendPos val="r"/><c:legendEntry><c:idx val="1"/><c:delete val="1"/></c:legendEntry><c:overlay val="0"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn entries_are_sorted_and_deduplicated_and_precede_the_layout() {
+        let xml = render(
+            two_series(ChartKind::Line)
+                .legend_layout(ooxml_chart::Layout::new(0.7, 0.3, 0.2, 0.3))
+                .hide_legend_entry(1)
+                .hide_legend_entry(0)
+                .hide_legend_entry(1),
+        );
+        assert_eq!(xml.matches("<c:legendEntry>").count(), 2, "{xml}");
+        assert!(
+            xml.contains(r#"<c:legendEntry><c:idx val="0"/><c:delete val="1"/></c:legendEntry><c:legendEntry><c:idx val="1"/><c:delete val="1"/></c:legendEntry><c:layout>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn no_hidden_entries_write_none() {
+        let xml = render(two_series(ChartKind::Line));
+        assert!(!xml.contains("legendEntry"), "{xml}");
+    }
+
+    #[test]
+    fn a_hidden_entry_with_no_legend_is_refused() {
+        let result = two_series(ChartKind::Line)
+            .legend(LegendPosition::None)
+            .hide_legend_entry(0)
+            .render();
+        assert!(matches!(result, Err(ChartError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn an_entry_past_the_last_series_is_refused() {
+        let result = two_series(ChartKind::Line).hide_legend_entry(2).render();
+        assert!(
+            matches!(result, Err(ChartError::OutOfRange { .. })),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn a_pie_takes_any_point_index() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Pie)
+                .series(series())
+                .hide_legend_entry(3),
+        );
+        assert!(xml.contains(r#"<c:legendEntry><c:idx val="3"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn leader_lines_follow_the_flags_on_a_pie() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Pie)
+                .series(series())
+                .data_labels(DataLabels::values().with_leader_lines()),
+        );
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<c:showBubbleSize val="0"/><c:showLeaderLines val="1"/></c:dLbls>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn no_leader_lines_write_no_element() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Pie)
+                .series(series())
+                .data_labels(DataLabels::values()),
+        );
+        assert!(!xml.contains("showLeaderLines"), "{xml}");
+    }
+
+    #[test]
+    fn leader_lines_on_other_kinds_are_refused() {
+        let result = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series())
+            .data_labels(DataLabels::values().with_leader_lines())
+            .render();
+        assert!(matches!(result, Err(ChartError::Unsupported { .. })));
+    }
+}
