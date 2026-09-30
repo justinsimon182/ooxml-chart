@@ -3,7 +3,8 @@
 
 use ooxml_chart::{
     Axis, ChartKind, ChartSpec, DataLabels, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues,
-    LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle,
+    Layout, LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Series, SeriesName,
+    TextStyle,
 };
 
 const TERSE: &str = r#"{
@@ -106,6 +107,24 @@ fn error_bars_survive_a_round_trip_and_default_sensibly() {
     let bars = &value["series"][0]["error_bars"][0];
     assert_eq!(bars["end_cap"], true);
     assert_eq!(bars["side"], "both");
+}
+
+#[test]
+fn layouts_survive_a_round_trip_and_inner_defaults_on() {
+    let spec = ChartSpec::new(ChartKind::Line)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
+        .plot_area_layout(Layout::new(0.1, 0.2, 0.6, 0.6).outer())
+        .legend_layout(Layout::new(0.75, 0.3, 0.2, 0.3));
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+
+    let terse: ChartSpec = serde_json::from_str(
+        r#"{"kind":"line","series":[{"name":{"literal":"A"},"values":"S!$B$2:$B$5"}],"plot_area_layout":{"x":0.1,"y":0.1,"width":0.5,"height":0.5}}"#,
+    )
+    .expect("parses");
+    let value = serde_json::to_value(&terse).expect("serialises");
+    assert_eq!(value["plot_area_layout"]["inner"], true);
 }
 
 #[test]

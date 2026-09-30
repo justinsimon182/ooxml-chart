@@ -12,8 +12,8 @@
 use crate::error::ChartError;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, ErrorAmount,
-    ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, MarkerSymbol, Paint, Plot, PointFormat,
-    PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout, MarkerSymbol, Paint, Plot,
+    PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -119,6 +119,51 @@ impl<'a> PlotRef<'a> {
     }
 }
 
+/// A `<c:layout>`: Excel's own choice when `layout` is `None` (an empty
+/// element for the plot area, which always carries one; nothing for a legend),
+/// otherwise a manual rectangle. `wMode` and `hMode` are left out, as Excel
+/// does, so `w` and `h` are sizes rather than offsets.
+fn layout_xml(layout: Option<&Layout>, plot_area: bool) -> String {
+    let Some(layout) = layout else {
+        return if plot_area {
+            "<c:layout/>".to_string()
+        } else {
+            String::new()
+        };
+    };
+    let target = if plot_area {
+        format!(
+            r#"<c:layoutTarget val="{}"/>"#,
+            if layout.inner { "inner" } else { "outer" }
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        r#"<c:layout><c:manualLayout>{target}<c:xMode val="edge"/><c:yMode val="edge"/><c:x val="{}"/><c:y val="{}"/><c:w val="{}"/><c:h val="{}"/></c:manualLayout></c:layout>"#,
+        layout.x, layout.y, layout.width, layout.height,
+    )
+}
+
+fn check_layout(layout: &Layout) -> Result<(), ChartError> {
+    let invalid = |reason| Err(ChartError::InvalidLayout { reason });
+    let numbers = [layout.x, layout.y, layout.width, layout.height];
+    if numbers.iter().any(|n| !n.is_finite()) {
+        return invalid("every number must be finite");
+    }
+    if !(0.0..=1.0).contains(&layout.x) || !(0.0..=1.0).contains(&layout.y) {
+        return invalid("x and y must be between 0 and 1");
+    }
+    if layout.width <= 0.0 || layout.height <= 0.0 {
+        return invalid("width and height must be above 0");
+    }
+    // A sliver of tolerance: 0.1 + 0.9 is not exactly 1.0 in floating point.
+    if layout.x + layout.width > 1.0 + 1e-9 || layout.y + layout.height > 1.0 + 1e-9 {
+        return invalid("the rectangle must fit inside the chart");
+    }
+    Ok(())
+}
+
 fn plots(spec: &ChartSpec) -> Vec<PlotRef<'_>> {
     let mut all = vec![PlotRef::of(spec.kind, &spec.series, false)];
     all.extend(spec.extra_plots.iter().map(
@@ -144,7 +189,8 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     if let Some(title) = &spec.title {
         out.push_str(&title_xml(title, spec.title_style.as_ref()));
     }
-    out.push_str("<c:plotArea><c:layout/>");
+    out.push_str("<c:plotArea>");
+    out.push_str(&layout_xml(spec.plot_area_layout.as_ref(), true));
     let mut first_index = 0;
     for plot in &plots {
         out.push_str(&plot_xml(spec, plot, first_index));
@@ -159,7 +205,8 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     out.push_str("</c:plotArea>");
     if let Some(code) = spec.legend.code() {
         out.push_str(&format!(
-            r#"<c:legend><c:legendPos val="{code}"/><c:overlay val="{}"/>{}</c:legend>"#,
+            r#"<c:legend><c:legendPos val="{code}"/>{}<c:overlay val="{}"/>{}</c:legend>"#,
+            layout_xml(spec.legend_layout.as_ref(), false),
             i32::from(spec.legend_overlay),
             spec.legend_style
                 .as_ref()
@@ -206,6 +253,15 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     }
     for style in [&spec.chart_area, &spec.plot_area].into_iter().flatten() {
         check_area_style(style)?;
+    }
+    for layout in [&spec.plot_area_layout, &spec.legend_layout]
+        .into_iter()
+        .flatten()
+    {
+        check_layout(layout)?;
+    }
+    if spec.legend_layout.is_some() && spec.legend.code().is_none() {
+        return unsupported("a legend layout with no legend".to_string());
     }
 
     // Combinations.

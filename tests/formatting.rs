@@ -1024,3 +1024,108 @@ mod error_bars {
         );
     }
 }
+
+// --- Manual layout --------------------------------------------------------------
+
+mod manual_layout {
+    use super::*;
+    use ooxml_chart::{Layout, LegendPosition};
+
+    fn base() -> ChartSpec {
+        ChartSpec::new(ChartKind::ColumnClustered).series(series())
+    }
+
+    #[test]
+    fn without_a_layout_the_plot_area_keeps_its_empty_layout_and_the_legend_none() {
+        let xml = render(base());
+        assert!(xml.contains("<c:plotArea><c:layout/>"), "{xml}");
+        assert!(!xml.contains("<c:manualLayout>"), "{xml}");
+    }
+
+    #[test]
+    fn a_plot_area_layout_is_written_as_an_inner_edge_rectangle() {
+        let xml = render(base().plot_area_layout(Layout::new(0.1, 0.15, 0.7, 0.65)));
+        assert!(
+            xml.contains(r#"<c:plotArea><c:layout><c:manualLayout><c:layoutTarget val="inner"/><c:xMode val="edge"/><c:yMode val="edge"/><c:x val="0.1"/><c:y val="0.15"/><c:w val="0.7"/><c:h val="0.65"/></c:manualLayout></c:layout>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_outer_plot_area_layout_says_so() {
+        let xml = render(base().plot_area_layout(Layout::new(0.0, 0.0, 1.0, 1.0).outer()));
+        assert!(xml.contains(r#"<c:layoutTarget val="outer"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn a_legend_layout_sits_between_the_position_and_the_overlay_with_no_target() {
+        let xml = render(
+            base()
+                .legend(LegendPosition::Right)
+                .legend_layout(Layout::new(0.8, 0.3, 0.15, 0.3)),
+        );
+        assert!(
+            xml.contains(r#"<c:legend><c:legendPos val="r"/><c:layout><c:manualLayout><c:xMode val="edge"/><c:yMode val="edge"/><c:x val="0.8"/><c:y val="0.3"/><c:w val="0.15"/><c:h val="0.3"/></c:manualLayout></c:layout><c:overlay val="0"/>"#),
+            "{xml}"
+        );
+        assert!(
+            !xml.contains(
+                "<c:legend><c:legendPos val=\"r\"/><c:layout><c:manualLayout><c:layoutTarget"
+            ),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_rectangle_that_only_just_fits_in_floating_point_is_accepted() {
+        // Sums like this can land a hair over 1.0 in floating point; a strict
+        // compare would refuse a rectangle that plainly fits.
+        render(base().plot_area_layout(Layout::new(0.1, 0.1, 0.9, 0.9)));
+    }
+
+    #[test]
+    fn layouts_that_do_not_fit_the_chart_are_refused() {
+        for layout in [
+            Layout::new(f64::NAN, 0.0, 0.5, 0.5),
+            Layout::new(-0.1, 0.0, 0.5, 0.5),
+            Layout::new(0.0, 1.5, 0.5, 0.5),
+            Layout::new(0.0, 0.0, 0.0, 0.5),
+            Layout::new(0.0, 0.0, 0.5, -1.0),
+            Layout::new(0.6, 0.0, 0.5, 0.5),
+            Layout::new(0.0, 0.6, 0.5, 0.5),
+        ] {
+            let error = base().plot_area_layout(layout).render();
+            assert!(
+                matches!(error, Err(ChartError::InvalidLayout { .. })),
+                "{layout:?}: {error:?}"
+            );
+            let error = base().legend_layout(layout).render();
+            assert!(
+                matches!(error, Err(ChartError::InvalidLayout { .. })),
+                "{layout:?}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_legend_layout_with_no_legend_is_refused() {
+        let error = base()
+            .legend(LegendPosition::None)
+            .legend_layout(Layout::new(0.1, 0.1, 0.2, 0.2))
+            .render();
+        assert!(
+            matches!(error, Err(ChartError::Unsupported { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_pie_takes_a_plot_area_layout_too() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Pie)
+                .series(series())
+                .plot_area_layout(Layout::new(0.2, 0.2, 0.6, 0.6)),
+        );
+        assert!(xml.contains("<c:manualLayout>"), "{xml}");
+    }
+}

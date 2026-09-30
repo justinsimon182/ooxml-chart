@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Manual layout: `Layout`, `ChartSpec::plot_area_layout` and
+  `ChartSpec::legend_layout` place and size the plot area (inner or outer) or
+  the legend as fractions of the chart. New `ChartError::InvalidLayout`; a
+  legend layout with no legend is refused.
 - Error bars: `ErrorBars` and `Series::with_error_bars`, with `ErrorAmount`
   (fixed, percentage, standard deviation, standard error, custom from a range
   or literal values), `ErrorBarSide`, `ErrorAxis`, end caps, colour and width.
