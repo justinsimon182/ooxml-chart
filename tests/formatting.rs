@@ -531,7 +531,7 @@ fn combining_kinds_that_cannot_share_a_category_axis_is_refused() {
         ChartSpec::new(ChartKind::Pie)
             .series(series())
             .plot(Plot::new(ChartKind::Line).series(series())),
-        column().plot(Plot::new(ChartKind::Scatter).series(series())),
+        column().plot(Plot::new(ChartKind::Bubble).series(series())),
         column().plot(Plot::new(ChartKind::BarClustered).series(series())),
         ChartSpec::new(ChartKind::BarClustered)
             .series(series())
@@ -2426,5 +2426,144 @@ mod label_fields {
                 .render();
             assert!(matches!(result, Err(ChartError::Unsupported { .. })));
         }
+    }
+}
+
+// --- Scatter combined with column, line and area ------------------------------------
+
+mod scatter_combo {
+    use super::*;
+
+    fn xy() -> Series {
+        Series::new(SeriesName::Literal("XY".into()), "'S'!$E$3:$E$5")
+            .with_categories("'S'!$D$3:$D$5")
+    }
+
+    fn primary() -> ChartSpec {
+        column().plot(Plot::new(ChartKind::Scatter).series(xy()))
+    }
+
+    fn secondary() -> ChartSpec {
+        column().plot(
+            Plot::new(ChartKind::ScatterLines)
+                .series(xy())
+                .on_secondary_axis(),
+        )
+    }
+
+    fn part<'a>(xml: &'a str, open: &str, close: &str) -> &'a str {
+        &xml[xml.find(open).expect(open)..xml.find(close).expect(close)]
+    }
+
+    #[test]
+    fn a_scatter_on_the_primary_axes_shares_the_columns_axes() {
+        let xml = render(primary());
+        assert!(
+            xml.find("<c:barChart>") < xml.find("<c:scatterChart>"),
+            "{xml}"
+        );
+        let scatter = part(&xml, "<c:scatterChart>", "</c:scatterChart>");
+        assert!(
+            scatter.contains(r#"<c:axId val="111"/><c:axId val="222"/>"#),
+            "{xml}"
+        );
+        assert!(
+            scatter.contains("<c:xVal>") && scatter.contains("<c:yVal>"),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<c:catAx>").count(), 1, "{xml}");
+        assert_eq!(xml.matches("<c:valAx>").count(), 1, "{xml}");
+    }
+
+    #[test]
+    fn a_secondary_scatter_gets_two_value_axes_with_x_hidden_and_y_on_the_right() {
+        let xml = render(secondary());
+        let scatter = part(&xml, "<c:scatterChart>", "</c:scatterChart>");
+        assert!(
+            scatter.contains(r#"<c:axId val="333"/><c:axId val="444"/>"#),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<c:catAx>").count(), 1, "{xml}");
+        assert_eq!(xml.matches("<c:valAx>").count(), 3, "{xml}");
+        let x = &xml[xml.find(r#"<c:valAx><c:axId val="333"/>"#).expect("x axis")..];
+        let x = &x[..x.find("</c:valAx>").unwrap()];
+        assert!(
+            x.contains(r#"<c:delete val="1"/>"#) && x.contains(r#"<c:axPos val="b"/>"#),
+            "{xml}"
+        );
+        assert!(x.contains(r#"<c:crossBetween val="midCat"/>"#), "{xml}");
+        let y = &xml[xml.find(r#"<c:valAx><c:axId val="444"/>"#).expect("y axis")..];
+        let y = &y[..y.find("</c:valAx>").unwrap()];
+        assert!(y.contains(r#"<c:axPos val="r"/>"#), "{xml}");
+        assert!(
+            y.contains(r#"<c:crossAx val="333"/><c:crosses val="max"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_scatter_joins_a_line_chart_and_keeps_numbering() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .series(series())
+                .plot(Plot::new(ChartKind::Scatter).series(xy())),
+        );
+        assert!(
+            xml.contains(r#"<c:idx val="1"/><c:order val="1"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_secondary_line_keeps_its_category_axis_pair() {
+        let xml = render(
+            column().plot(
+                Plot::new(ChartKind::Line)
+                    .series(series())
+                    .on_secondary_axis(),
+            ),
+        );
+        assert_eq!(xml.matches("<c:catAx>").count(), 2, "{xml}");
+    }
+
+    #[test]
+    fn a_scatter_and_another_kind_on_one_secondary_axis_is_refused() {
+        let spec = secondary().plot(
+            Plot::new(ChartKind::Line)
+                .series(series())
+                .on_secondary_axis(),
+        );
+        assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+    }
+
+    #[test]
+    fn a_scatter_on_each_axis_is_allowed() {
+        let spec = primary().plot(
+            Plot::new(ChartKind::Scatter)
+                .series(xy())
+                .on_secondary_axis(),
+        );
+        assert!(spec.render().is_ok());
+    }
+
+    #[test]
+    fn bubble_and_a_scatter_base_are_refused() {
+        for spec in [
+            column().plot(Plot::new(ChartKind::Bubble).series(series())),
+            ChartSpec::new(ChartKind::Scatter)
+                .series(xy())
+                .plot(Plot::new(ChartKind::Line).series(series())),
+            ChartSpec::new(ChartKind::Scatter)
+                .series(xy())
+                .plot(Plot::new(ChartKind::Scatter).series(xy())),
+        ] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+
+    #[test]
+    fn a_data_table_with_a_scatter_is_refused() {
+        let spec = primary().data_table(ooxml_chart::DataTable::new());
+        assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
     }
 }

@@ -255,6 +255,23 @@ fn mixed_label_parts_survive_a_round_trip() {
 }
 
 #[test]
+fn a_scatter_plot_in_a_combo_survives_a_round_trip() {
+    let spec = ChartSpec::new(ChartKind::ColumnClustered)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
+        .plot(
+            Plot::new(ChartKind::ScatterLines)
+                .series(
+                    Series::new(SeriesName::Literal("XY".into()), "S!$D$2:$D$5")
+                        .with_categories("S!$C$2:$C$5"),
+                )
+                .on_secondary_axis(),
+        );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

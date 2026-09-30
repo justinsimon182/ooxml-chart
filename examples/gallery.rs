@@ -523,6 +523,27 @@ fn main() {
                 )),
         ),
         (
+            "combo_scatter_primary",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Column with scatter")
+                .series(series("North", "B", "8E0DD1"))
+                .plot(
+                    Plot::new(ChartKind::Scatter)
+                        .series(series("Targets", "C", "0090B2").with_categories("'S'!$A$3:$A$5")),
+                ),
+        ),
+        (
+            "combo_scatter_secondary",
+            ChartSpec::new(ChartKind::Line)
+                .title("Line with secondary scatter")
+                .series(series("North", "B", "8E0DD1"))
+                .plot(
+                    Plot::new(ChartKind::ScatterLines)
+                        .series(series("Fit", "C", "28EAE4").with_categories("'S'!$A$3:$A$5"))
+                        .on_secondary_axis(),
+                ),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")
