@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Drawing packaging helpers: `DRAWING_CONTENT_TYPE`, `DRAWING_RELATIONSHIP_TYPE`,
+  `drawing_content_types_override`, `worksheet_drawing_relationship` and
+  `worksheet_drawing_element`, so a caller can register a drawing and link it
+  from a worksheet without hard-coding the strings.
 - Mixed text-and-field data labels: `PointLabel::parts` takes `LabelPart::text`
   and `LabelPart::field(LabelField::..)` (value, category name, series name,
   percentage, cell range) and writes `<a:fld>` runs with the `c15` field-table

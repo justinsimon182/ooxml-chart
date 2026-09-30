@@ -16,6 +16,46 @@ use crate::xml::escape;
 pub const CHART_RELATIONSHIP_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
 
+/// The content type a drawing part declares in `[Content_Types].xml`.
+pub const DRAWING_CONTENT_TYPE: &str = "application/vnd.openxmlformats-officedocument.drawing+xml";
+
+/// The relationship type a worksheet uses to reach its drawing.
+pub const DRAWING_RELATIONSHIP_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
+
+/// The `[Content_Types].xml` entry for a drawing part, ready to insert before
+/// `</Types>`. `part_name` is the package path with a leading slash, e.g.
+/// `"/xl/drawings/drawing1.xml"`.
+#[must_use]
+pub fn drawing_content_types_override(part_name: &str) -> String {
+    format!(
+        r#"<Override PartName="{}" ContentType="{DRAWING_CONTENT_TYPE}"/>"#,
+        escape(part_name),
+    )
+}
+
+/// The worksheet's `_rels` entry that reaches a drawing, e.g. `id` `"rId1"` and
+/// `target` `"../drawings/drawing1.xml"`. Insert it before `</Relationships>`
+/// in `xl/worksheets/_rels/sheetN.xml.rels`.
+#[must_use]
+pub fn worksheet_drawing_relationship(id: &str, target: &str) -> String {
+    format!(
+        r#"<Relationship Id="{}" Type="{DRAWING_RELATIONSHIP_TYPE}" Target="{}"/>"#,
+        escape(id),
+        escape(target),
+    )
+}
+
+/// The `<drawing>` element a worksheet carries to point at its drawing, for
+/// the relationship `id`. The worksheet needs the `r` prefix declared
+/// (`xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`)
+/// and this element placed where the schema puts it: after the page setup and
+/// header/footer elements, before `legacyDrawing` and `tableParts`.
+#[must_use]
+pub fn worksheet_drawing_element(id: &str) -> String {
+    format!(r#"<drawing r:id="{}"/>"#, escape(id))
+}
+
 /// The frame that hosts one chart inside a drawing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphicFrame {
@@ -313,5 +353,32 @@ mod tests {
         assert!(out.contains(r#"Id="rId37""#), "{out}");
         assert_eq!(out.matches("<Relationship ").count(), 2, "{out}");
         assert!(out.contains(CHART_RELATIONSHIP_TYPE), "{out}");
+    }
+
+    #[test]
+    fn the_drawing_content_types_entry_names_the_part_and_type() {
+        assert_eq!(
+            drawing_content_types_override("/xl/drawings/drawing1.xml"),
+            r#"<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>"#
+        );
+    }
+
+    #[test]
+    fn the_worksheet_relationship_and_element_carry_the_id() {
+        assert_eq!(
+            worksheet_drawing_relationship("rId2", "../drawings/drawing1.xml"),
+            r#"<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>"#
+        );
+        assert_eq!(
+            worksheet_drawing_element("rId2"),
+            r#"<drawing r:id="rId2"/>"#
+        );
+    }
+
+    #[test]
+    fn names_and_ids_are_escaped() {
+        assert!(drawing_content_types_override("/a&b.xml").contains("/a&amp;b.xml"));
+        assert!(worksheet_drawing_relationship("r&1", "x<y").contains(r#"Id="r&amp;1""#));
+        assert!(worksheet_drawing_element("r\"1").contains("r&quot;1"));
     }
 }
