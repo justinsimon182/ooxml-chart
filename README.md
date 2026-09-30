@@ -82,8 +82,10 @@ rule — `floor(points * 1.2)` — is wrong often enough to matter, so
 
 Clustered, stacked and percent-stacked bar and column; line with and without
 markers; area, stacked area and percent-stacked area; scatter (markers, or
-lines with markers); pie; doughnut; radar. `ChartKind` is `#[non_exhaustive]`;
-more can be added without a breaking change.
+lines with markers); bubble; pie; doughnut; radar and filled radar. Column,
+line and area kinds combine on one chart, optionally with a second value axis.
+`ChartKind` is `#[non_exhaustive]`; more can be added without a breaking
+change.
 
 ## Formatting
 
@@ -114,6 +116,58 @@ a label position the chart kind does not allow â€” are refused with a typed
 
 `Series`, `Axis` and `DataLabels` are `#[non_exhaustive]`: build them with
 `Series::new` / `Axis::default()` and the builder methods.
+
+Beyond the above: `TextStyle` for fonts, `AreaStyle` for chart and plot area
+fill and border, `PointFormat` for one slice or bar, `Trendline`, log and date
+axes, tick and label options.
+
+## Combination charts
+
+```rust
+use ooxml_chart::{Axis, ChartKind, ChartSpec, Plot, Series, SeriesName};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .series(
+        Series::new(SeriesName::Literal("Revenue".into()), "'Sheet1'!$B$2:$B$5")
+            .with_categories("'Sheet1'!$A$2:$A$5"),
+    )
+    .plot(
+        Plot::new(ChartKind::LineMarkers)
+            .series(
+                Series::new(SeriesName::Literal("Margin".into()), "'Sheet1'!$C$2:$C$5")
+                    .with_categories("'Sheet1'!$A$2:$A$5"),
+            )
+            .on_secondary_axis(),
+    )
+    .secondary_value_axis(Axis::default().title("Margin").number_format("0%"))
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+## Declaring a chart as data
+
+With the `serde` feature every spec type implements `Serialize` and
+`Deserialize`, so a chart can live in JSON, TOML or YAML instead of code. Only
+`kind` and each series' `name` and `values` are required; everything else
+takes the Excel default. A misspelt field is an error, not silently ignored.
+
+```toml
+[dependencies]
+ooxml-chart = { version = "0.1", features = ["serde"] }
+```
+
+```json
+{
+  "kind": "column_clustered",
+  "title": "Revenue",
+  "series": [
+    { "name": { "literal": "North" }, "values": "'Sheet1'!$B$2:$B$5",
+      "categories": "'Sheet1'!$A$2:$A$5", "color": "8E0DD1" }
+  ]
+}
+```
+
+A parsed spec is validated when rendered, exactly like one built in code.
 
 Anchors other than `twoCellAnchor` are available through `Anchor` and
 `drawing_part_with`.

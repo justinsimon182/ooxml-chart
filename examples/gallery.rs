@@ -4,8 +4,9 @@
 //! output between versions or feeding another tool's validator.
 
 use ooxml_chart::{
-    Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, LegendPosition, MarkerSymbol,
-    Series, SeriesName,
+    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, LegendPosition,
+    MarkerSymbol, Plot, PointFormat, Series, SeriesName, TextStyle, TickLabels, Trendline,
+    TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -41,6 +42,7 @@ fn main() {
         ("pie", ChartKind::Pie),
         ("doughnut", ChartKind::Doughnut),
         ("radar", ChartKind::Radar),
+        ("radar_filled", ChartKind::RadarFilled),
     ];
 
     for (file, kind) in kinds {
@@ -74,5 +76,80 @@ fn main() {
         let part = spec.render().expect("a chart");
         fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
     }
-    println!("wrote {} charts to {}", kinds.len(), dir.display());
+    // Features that need more than a kind.
+    let extras = [
+        (
+            "bubble",
+            ChartSpec::new(ChartKind::Bubble)
+                .title("bubble")
+                .series(series("North", "B", "8E0DD1").with_bubble_sizes("'Sheet1'!$D$2:$D$5")),
+        ),
+        (
+            "combo_secondary_axis",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Revenue and margin")
+                .series(series("Revenue", "B", "104991"))
+                .plot(
+                    Plot::new(ChartKind::LineMarkers)
+                        .series(series("Margin", "C", "28EAE4"))
+                        .on_secondary_axis(),
+                )
+                .secondary_value_axis(Axis::default().title("Margin").number_format("0%")),
+        ),
+        (
+            "styled_pie",
+            ChartSpec::new(ChartKind::Pie)
+                .title("Share")
+                .title_style(TextStyle::new().size(16.0).bold(true).color("010102"))
+                .chart_area(
+                    AreaStyle::new()
+                        .fill("F8F6F0")
+                        .border("68248C")
+                        .border_width(1.0),
+                )
+                .series(
+                    series("Share", "B", "000000")
+                        .with_point(0, PointFormat::new().color("8E0DD1").explosion(10))
+                        .with_point(1, PointFormat::new().color("0090B2"))
+                        .with_point(2, PointFormat::new().color("28EAE4"))
+                        .with_point(3, PointFormat::new().color("104991")),
+                ),
+        ),
+        (
+            "trend_and_log_axis",
+            ChartSpec::new(ChartKind::ScatterLines)
+                .title("Growth")
+                .category_axis(Axis::default().title("Quarter").minor_gridlines(true))
+                .value_axis(
+                    Axis::default()
+                        .log(10)
+                        .min(1.0)
+                        .tick_labels(TickLabels::Low)
+                        .label_rotation(-30),
+                )
+                .series(
+                    series("Users", "B", "8E0DD1").with_trendline(
+                        Trendline::new(TrendlineKind::Exponential)
+                            .show_equation()
+                            .forward(1.0),
+                    ),
+                ),
+        ),
+        (
+            "date_axis",
+            ChartSpec::new(ChartKind::Line)
+                .title("Daily")
+                .category_axis(
+                    Axis::default()
+                        .dates(DateUnit::Months)
+                        .number_format("mmm yy"),
+                )
+                .series(series("Users", "B", "0090B2")),
+        ),
+    ];
+    for (file, spec) in extras {
+        let part = spec.render().expect("a chart");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+    println!("wrote {} charts to {}", kinds.len() + 5, dir.display());
 }

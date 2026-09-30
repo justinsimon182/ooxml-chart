@@ -18,8 +18,24 @@
 /// The apostrophe becomes the numeric reference `&#39;` rather than `&apos;`
 /// because that is what excelize writes, and every part this crate is measured
 /// against uses it.
+///
+/// # Characters XML 1.0 cannot carry
+///
+/// Control characters other than tab, newline and carriage return, and U+FFFE
+/// and U+FFFF, are not legal in any XML 1.0 document, escaped or not. A stray
+/// NUL pasted into a title makes Excel report the whole file damaged, so they
+/// are dropped rather than written.
 pub fn escape(value: &str) -> String {
+    let legal = |c: &char| {
+        matches!(
+            c,
+            '\t' | '\n' | '\r' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
+        )
+    };
     value
+        .chars()
+        .filter(legal)
+        .collect::<String>()
         .replace('&', "&amp;")
         .replace('\'', "&#39;")
         .replace('<', "&lt;")
@@ -39,6 +55,12 @@ mod tests {
     #[test]
     fn angle_brackets_and_quotes_are_escaped() {
         assert_eq!(escape(r#"<a href="x">"#), "&lt;a href=&quot;x&quot;&gt;");
+    }
+
+    #[test]
+    fn characters_xml_cannot_carry_are_dropped() {
+        assert_eq!(escape("a\u{0}b\u{1B}c\u{FFFE}d"), "abcd");
+        assert_eq!(escape("tab\there\nnewline"), "tab\there\nnewline");
     }
 
     #[test]

@@ -202,4 +202,22 @@ pub enum ChartError {
         /// Largest allowed.
         max: i64,
     },
+
+    /// A combination Excel cannot draw, or a feature the chart kind does not
+    /// have.
+    ///
+    /// Examples: a trendline on a stacked column, a pie combined with a line,
+    /// a date axis on a scatter. Excel reports such files as damaged rather
+    /// than ignoring the request.
+    #[error("{what} is not supported")]
+    Unsupported {
+        /// What was asked for, in words, e.g. `"a trendline on ColumnStacked"`.
+        what: String,
+    },
+
+    /// A bubble series has no [`crate::Series::with_bubble_sizes`] reference.
+    ///
+    /// Without sizes Excel has nothing to draw, and refuses the part.
+    #[error("a bubble series needs a sizes reference")]
+    MissingBubbleSizes,
 }

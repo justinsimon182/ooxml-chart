@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Characters XML 1.0 cannot carry (control characters, U+FFFE, U+FFFF) are
+  dropped from titles, names and labels instead of making Excel report the file
+  damaged.
+
 - Horizontal bar charts wrote the category axis at `axPos="b"` and the value
   axis at `axPos="l"`; they now read sideways (`l` and `b`).
 - Every generated chart now writes `<c:roundedCorners val="0"/>`. The schema
@@ -26,6 +30,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Combination charts: `Plot` and `ChartSpec::plot` draw column, line and area
+  series together, optionally on a second value axis
+  (`Plot::on_secondary_axis`, `ChartSpec::secondary_value_axis`).
+- `ChartKind::Bubble` (`Series::with_bubble_sizes`, `ChartSpec::bubble_scale`)
+  and `ChartKind::RadarFilled`.
+- `TextStyle` for the title, axis titles, tick labels, legend, data labels and
+  chart-wide text; `AreaStyle` and `Paint` for chart-area and plot-area fill and
+  border; `ChartSpec::legend_overlay`.
+- Axis options: `log`, `minor_gridlines`, `minor_unit`, `tick_labels`
+  (`TickLabels`), `major_tick` and `minor_tick` (`TickMark`), `label_rotation`,
+  `crosses_max`, and a date axis via `Axis::dates` (`DateUnit`).
+- `PointFormat` and `Series::with_point` for per-point colour and pie explosion;
+  `Trendline`, `TrendlineKind` and `Series::with_trendline`.
+- `ChartPart::content_types_override`.
+- Optional `serde` feature: every spec type implements `Serialize` and
+  `Deserialize`, and unknown fields are refused.
+- `ChartError::Unsupported` and `ChartError::MissingBubbleSizes`.
+- GitHub Actions CI: fmt, clippy, tests, docs, and an MSRV build.
 - Chart kinds: `BarPercentStacked`, `ColumnPercentStacked`, `Area`,
   `AreaStacked`, `AreaPercentStacked`, `Scatter`, `ScatterLines`, `Doughnut`,
   `Radar`. `ChartSpec::hole_size` and `first_slice_angle` for round charts.

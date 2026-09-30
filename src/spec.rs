@@ -5,6 +5,8 @@ use crate::render;
 
 /// What kind of chart to draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum ChartKind {
     /// Horizontal bars, one per category per series, side by side.
@@ -41,6 +43,12 @@ pub enum ChartKind {
     Doughnut,
     /// One spoke per category, a line per series joining the spokes.
     Radar,
+    /// Like [`ChartKind::Radar`] with each series' outline filled.
+    RadarFilled,
+    /// Circles placed by a numeric x and y, sized by a third value. A
+    /// series' categories reference the x values and
+    /// [`Series::with_bubble_sizes`] the sizes.
+    Bubble,
 }
 
 impl ChartKind {
@@ -58,6 +66,8 @@ impl ChartKind {
 /// Both occur in real workbooks. A literal name carries no reference element at
 /// all, which is why this is an enum rather than an `Option<String>` pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum SeriesName {
     /// The name itself.
     Literal(String),
@@ -67,6 +77,8 @@ pub enum SeriesName {
 
 /// A point marker's shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum MarkerSymbol {
     /// A filled circle.
@@ -108,37 +120,214 @@ impl MarkerSymbol {
     }
 }
 
+/// Formatting for one point of a series.
+///
+/// Honoured on bar, column, pie, doughnut and bubble series; ignored on kinds
+/// where a single point has no shape of its own to colour.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct PointFormat {
+    /// Fill colour as `RRGGBB`.
+    pub color: Option<String>,
+    /// How far a pie slice is pulled out from the centre, as a percentage of
+    /// the radius (0-400). Pie and doughnut only.
+    pub explosion: Option<u16>,
+}
+
+impl PointFormat {
+    /// An unformatted point; chain the setters.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the fill colour, six hex digits without `#`.
+    #[must_use]
+    pub fn color(mut self, rgb: impl Into<String>) -> Self {
+        self.color = Some(rgb.into());
+        self
+    }
+
+    /// Pulls a pie slice out from the centre, 0-400 percent of the radius.
+    #[must_use]
+    pub fn explosion(mut self, percent: u16) -> Self {
+        self.explosion = Some(percent);
+        self
+    }
+}
+
+/// The curve a trendline fits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum TrendlineKind {
+    /// A straight line of best fit.
+    Linear,
+    /// `y = c * e^(b*x)`. Needs positive values.
+    Exponential,
+    /// `y = c * ln(x) + b`. Needs positive x.
+    Logarithmic,
+    /// A polynomial of the given order, 2-6.
+    Polynomial(u8),
+    /// `y = c * x^b`. Needs positive values.
+    Power,
+    /// A moving average over the given number of points, at least 2.
+    MovingAverage(u16),
+}
+
+/// A fitted line drawn over a series.
+///
+/// Excel accepts trendlines only on unstacked bar, column, line, area,
+/// scatter and bubble series; anything else is refused at render time.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Trendline {
+    /// The curve to fit.
+    pub kind: TrendlineKind,
+    /// Legend entry. `None` lets Excel name it after the fit.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub name: Option<String>,
+    /// Line colour as `RRGGBB`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub color: Option<String>,
+    /// Line width in points.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub width_pt: Option<f64>,
+    /// Periods to extend forward past the last point.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub forward: Option<f64>,
+    /// Periods to extend backward before the first point.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub backward: Option<f64>,
+    /// Print the equation on the chart.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub show_equation: bool,
+    /// Print R-squared on the chart.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub show_r_squared: bool,
+}
+
+impl Trendline {
+    /// A trendline fitting `kind`, otherwise default.
+    pub fn new(kind: TrendlineKind) -> Self {
+        Self {
+            kind,
+            name: None,
+            color: None,
+            width_pt: None,
+            forward: None,
+            backward: None,
+            show_equation: false,
+            show_r_squared: false,
+        }
+    }
+
+    /// Names the legend entry.
+    #[must_use]
+    pub fn name(mut self, text: impl Into<String>) -> Self {
+        self.name = Some(text.into());
+        self
+    }
+
+    /// Sets the line colour, six hex digits without `#`.
+    #[must_use]
+    pub fn color(mut self, rgb: impl Into<String>) -> Self {
+        self.color = Some(rgb.into());
+        self
+    }
+
+    /// Sets the line width in points.
+    #[must_use]
+    pub fn width(mut self, points: f64) -> Self {
+        self.width_pt = Some(points);
+        self
+    }
+
+    /// Extends the line forward by `periods`.
+    #[must_use]
+    pub fn forward(mut self, periods: f64) -> Self {
+        self.forward = Some(periods);
+        self
+    }
+
+    /// Extends the line backward by `periods`.
+    #[must_use]
+    pub fn backward(mut self, periods: f64) -> Self {
+        self.backward = Some(periods);
+        self
+    }
+
+    /// Prints the equation on the chart.
+    #[must_use]
+    pub fn show_equation(mut self) -> Self {
+        self.show_equation = true;
+        self
+    }
+
+    /// Prints R-squared on the chart.
+    #[must_use]
+    pub fn show_r_squared(mut self) -> Self {
+        self.show_r_squared = true;
+        self
+    }
+}
+
 /// One plotted series.
 ///
 /// `name` and `values` are the required core. Everything else is optional
 /// formatting, set with the `with_*` methods; build with [`Series::new`] so
 /// new options never break the call site.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 #[non_exhaustive]
 pub struct Series {
     /// What to call it in the legend.
     pub name: SeriesName,
     /// The category labels, e.g. `"'Sheet1'!$A$3:$A$38"`. `None` numbers the
     /// categories 1, 2, 3… which is what Excel does with no category reference.
-    /// On a scatter chart these are the x values.
+    /// On a scatter or bubble chart these are the x values.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub categories: Option<String>,
     /// The plotted values, e.g. `"'Sheet1'!$C$3:$C$38"`.
     pub values: String,
-    /// Fill (bars, areas) or line (lines, scatter, radar) colour as `RRGGBB`.
-    /// Ignored on pie and doughnut, where one colour would flatten the slices.
+    /// Fill (bars, areas, bubbles, filled radar) or line (lines, scatter,
+    /// radar) colour as `RRGGBB`. Ignored on pie and doughnut, where one
+    /// colour would flatten the slices; use [`Series::with_point`] there.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub color: Option<String>,
     /// Line width in points.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub line_width_pt: Option<f64>,
     /// Draw the line as a smooth curve rather than straight segments.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub smooth: bool,
     /// Marker shape and size in points (2-72).
+    #[cfg_attr(feature = "serde", serde(default))]
     pub marker: Option<(MarkerSymbol, u8)>,
     /// Category labels to cache in the part, so viewers that do not
     /// recalculate can still draw the axis.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub categories_cache: Option<Vec<String>>,
     /// Values to cache in the part, so viewers that do not recalculate can
     /// still draw the plot. Non-finite entries are written as blanks.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub values_cache: Option<Vec<f64>>,
+    /// Reference to the bubble sizes. Required on a bubble chart, ignored
+    /// elsewhere.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bubble_sizes: Option<String>,
+    /// Per-point formatting, by zero-based point index.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub points: Vec<(usize, PointFormat)>,
+    /// Fitted lines drawn over the series.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub trendlines: Vec<Trendline>,
 }
 
 impl Series {
@@ -154,6 +343,9 @@ impl Series {
             marker: None,
             categories_cache: None,
             values_cache: None,
+            bubble_sizes: None,
+            points: Vec::new(),
+            trendlines: Vec::new(),
         }
     }
 
@@ -207,13 +399,250 @@ impl Series {
         self.values_cache = Some(values);
         self
     }
+
+    /// Sets the bubble sizes reference. Bubble charts only.
+    #[must_use]
+    pub fn with_bubble_sizes(mut self, reference: impl Into<String>) -> Self {
+        self.bubble_sizes = Some(reference.into());
+        self
+    }
+
+    /// Formats one point, by zero-based index. A later call for the same index
+    /// replaces the earlier one.
+    #[must_use]
+    pub fn with_point(mut self, index: usize, format: PointFormat) -> Self {
+        self.points.retain(|(existing, _)| *existing != index);
+        self.points.push((index, format));
+        self
+    }
+
+    /// Draws a trendline over the series. Several may be added.
+    #[must_use]
+    pub fn with_trendline(mut self, trendline: Trendline) -> Self {
+        self.trendlines.push(trendline);
+        self
+    }
+}
+
+/// Font settings for a piece of chart text.
+///
+/// Unset fields inherit from the chart's text style, then from Excel.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct TextStyle {
+    /// Size in points, 1-4000.
+    pub size_pt: Option<f64>,
+    /// Bold or not.
+    pub bold: Option<bool>,
+    /// Italic or not.
+    pub italic: Option<bool>,
+    /// Colour as `RRGGBB`.
+    pub color: Option<String>,
+    /// Typeface name, e.g. `"Inter"`.
+    pub font: Option<String>,
+}
+
+impl TextStyle {
+    /// An empty style; chain the setters.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the size in points.
+    #[must_use]
+    pub fn size(mut self, points: f64) -> Self {
+        self.size_pt = Some(points);
+        self
+    }
+
+    /// Sets bold on or off.
+    #[must_use]
+    pub fn bold(mut self, bold: bool) -> Self {
+        self.bold = Some(bold);
+        self
+    }
+
+    /// Sets italic on or off.
+    #[must_use]
+    pub fn italic(mut self, italic: bool) -> Self {
+        self.italic = Some(italic);
+        self
+    }
+
+    /// Sets the colour, six hex digits without `#`.
+    #[must_use]
+    pub fn color(mut self, rgb: impl Into<String>) -> Self {
+        self.color = Some(rgb.into());
+        self
+    }
+
+    /// Sets the typeface.
+    #[must_use]
+    pub fn font(mut self, name: impl Into<String>) -> Self {
+        self.font = Some(name.into());
+        self
+    }
+}
+
+/// A fill or line: nothing, or a solid colour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum Paint {
+    /// Draw nothing.
+    None,
+    /// A solid colour, six hex digits without `#`.
+    Color(String),
+}
+
+/// The fill and border of the chart area or the plot area.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct AreaStyle {
+    /// Background. `None` leaves Excel's default.
+    pub fill: Option<Paint>,
+    /// Border colour. `None` leaves Excel's default.
+    pub border: Option<Paint>,
+    /// Border width in points.
+    pub border_width_pt: Option<f64>,
+}
+
+impl AreaStyle {
+    /// An empty style; chain the setters.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fills with a solid colour, six hex digits without `#`.
+    #[must_use]
+    pub fn fill(mut self, rgb: impl Into<String>) -> Self {
+        self.fill = Some(Paint::Color(rgb.into()));
+        self
+    }
+
+    /// Removes the fill, leaving the area transparent.
+    #[must_use]
+    pub fn no_fill(mut self) -> Self {
+        self.fill = Some(Paint::None);
+        self
+    }
+
+    /// Draws a solid border, six hex digits without `#`.
+    #[must_use]
+    pub fn border(mut self, rgb: impl Into<String>) -> Self {
+        self.border = Some(Paint::Color(rgb.into()));
+        self
+    }
+
+    /// Removes the border.
+    #[must_use]
+    pub fn no_border(mut self) -> Self {
+        self.border = Some(Paint::None);
+        self
+    }
+
+    /// Sets the border width in points.
+    #[must_use]
+    pub fn border_width(mut self, points: f64) -> Self {
+        self.border_width_pt = Some(points);
+        self
+    }
+}
+
+/// Where an axis puts its tick labels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum TickLabels {
+    /// Beside the axis. Excel's default.
+    #[default]
+    NextTo,
+    /// At the low end of the crossing axis — keeps labels clear of negative
+    /// bars.
+    Low,
+    /// At the high end of the crossing axis.
+    High,
+    /// No tick labels.
+    None,
+}
+
+impl TickLabels {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            TickLabels::NextTo => "nextTo",
+            TickLabels::Low => "low",
+            TickLabels::High => "high",
+            TickLabels::None => "none",
+        }
+    }
+}
+
+/// How an axis draws its tick marks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum TickMark {
+    /// Outside the plot.
+    Out,
+    /// Inside the plot.
+    In,
+    /// Straddling the axis.
+    Cross,
+    /// No marks.
+    None,
+}
+
+impl TickMark {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            TickMark::Out => "out",
+            TickMark::In => "in",
+            TickMark::Cross => "cross",
+            TickMark::None => "none",
+        }
+    }
+}
+
+/// The unit of a date axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum DateUnit {
+    /// One tick per day.
+    Days,
+    /// One tick per month.
+    Months,
+    /// One tick per year.
+    Years,
+}
+
+impl DateUnit {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            DateUnit::Days => "days",
+            DateUnit::Months => "months",
+            DateUnit::Years => "years",
+        }
+    }
 }
 
 /// Where the legend goes, if anywhere.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum LegendPosition {
     /// To the right of the plot. Excel's own default.
+    #[default]
     Right,
     /// Below the plot.
     Bottom,
@@ -243,27 +672,54 @@ impl LegendPosition {
 /// Build with [`Axis::default`] and the builder methods; the struct is
 /// `#[non_exhaustive]` so new options never break the call site.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Axis {
     /// An axis title, if any.
     pub title: Option<String>,
     /// Whether to draw major gridlines across the plot from this axis.
     pub major_gridlines: bool,
+    /// Whether to draw minor gridlines.
+    pub minor_gridlines: bool,
     /// Whether the axis is drawn. A deleted axis still exists and still scales
     /// the plot — it is just not shown.
     pub visible: bool,
     /// An Excel number format for the tick labels, e.g. `"0.0%"`.
     pub number_format: Option<String>,
     /// Fixed scale minimum. `None` lets Excel choose. Value axes and the x axis
-    /// of a scatter only; not written for category axes.
+    /// of a scatter or bubble chart only; not written for category axes.
     pub min: Option<f64>,
-    /// Fixed scale maximum. `None` lets Excel choose.
+    /// Fixed scale maximum. `None` lets Excel choose. Same axes as `min`.
     pub max: Option<f64>,
-    /// Distance between major ticks. Value axes and the x axis of a scatter
-    /// only. `None` lets Excel choose.
+    /// Distance between major ticks. Value axes and the x axis of a scatter or
+    /// bubble chart only. `None` lets Excel choose.
     pub major_unit: Option<f64>,
+    /// Distance between minor ticks. Same axes as `major_unit`.
+    pub minor_unit: Option<f64>,
+    /// Logarithmic scale with this base (2-1000). Same axes as `min`.
+    pub log_base: Option<u16>,
     /// Plot from high to low instead of low to high.
     pub reversed: bool,
+    /// Where the tick labels go.
+    pub tick_labels: TickLabels,
+    /// Major tick mark style. `None` leaves Excel's default.
+    pub major_tick: Option<TickMark>,
+    /// Minor tick mark style. `None` leaves Excel's default.
+    pub minor_tick: Option<TickMark>,
+    /// Tick label rotation in degrees, -90 to 90.
+    pub label_rotation: Option<i16>,
+    /// Font for the axis title.
+    pub title_style: Option<TextStyle>,
+    /// Font for the tick labels.
+    pub label_style: Option<TextStyle>,
+    /// Cross the other axis at its maximum instead of at zero. On a horizontal
+    /// bar chart's value axis this moves the axis to the other side.
+    pub crosses_max: bool,
+    /// Draw a date axis with this unit. Category axes of bar, column, line and
+    /// area charts only.
+    pub date_unit: Option<DateUnit>,
 }
 
 impl Default for Axis {
@@ -272,12 +728,23 @@ impl Default for Axis {
         Self {
             title: None,
             major_gridlines: false,
+            minor_gridlines: false,
             visible: true,
             number_format: None,
             min: None,
             max: None,
             major_unit: None,
+            minor_unit: None,
+            log_base: None,
             reversed: false,
+            tick_labels: TickLabels::NextTo,
+            major_tick: None,
+            minor_tick: None,
+            label_rotation: None,
+            title_style: None,
+            label_style: None,
+            crosses_max: false,
+            date_unit: None,
         }
     }
 }
@@ -294,6 +761,13 @@ impl Axis {
     #[must_use]
     pub fn gridlines(mut self, on: bool) -> Self {
         self.major_gridlines = on;
+        self
+    }
+
+    /// Turns minor gridlines on or off.
+    #[must_use]
+    pub fn minor_gridlines(mut self, on: bool) -> Self {
+        self.minor_gridlines = on;
         self
     }
 
@@ -332,10 +806,81 @@ impl Axis {
         self
     }
 
+    /// Fixes the distance between minor ticks.
+    #[must_use]
+    pub fn minor_unit(mut self, value: f64) -> Self {
+        self.minor_unit = Some(value);
+        self
+    }
+
+    /// Uses a logarithmic scale of the given base, 2-1000. Values at or below
+    /// zero cannot be plotted on one.
+    #[must_use]
+    pub fn log(mut self, base: u16) -> Self {
+        self.log_base = Some(base);
+        self
+    }
+
     /// Plots from high to low.
     #[must_use]
     pub fn reversed(mut self, reversed: bool) -> Self {
         self.reversed = reversed;
+        self
+    }
+
+    /// Places the tick labels.
+    #[must_use]
+    pub fn tick_labels(mut self, position: TickLabels) -> Self {
+        self.tick_labels = position;
+        self
+    }
+
+    /// Sets the major tick mark style.
+    #[must_use]
+    pub fn major_tick(mut self, mark: TickMark) -> Self {
+        self.major_tick = Some(mark);
+        self
+    }
+
+    /// Sets the minor tick mark style.
+    #[must_use]
+    pub fn minor_tick(mut self, mark: TickMark) -> Self {
+        self.minor_tick = Some(mark);
+        self
+    }
+
+    /// Rotates the tick labels, -90 to 90 degrees.
+    #[must_use]
+    pub fn label_rotation(mut self, degrees: i16) -> Self {
+        self.label_rotation = Some(degrees);
+        self
+    }
+
+    /// Styles the axis title.
+    #[must_use]
+    pub fn title_style(mut self, style: TextStyle) -> Self {
+        self.title_style = Some(style);
+        self
+    }
+
+    /// Styles the tick labels.
+    #[must_use]
+    pub fn label_style(mut self, style: TextStyle) -> Self {
+        self.label_style = Some(style);
+        self
+    }
+
+    /// Crosses the other axis at its maximum.
+    #[must_use]
+    pub fn crosses_max(mut self, on: bool) -> Self {
+        self.crosses_max = on;
+        self
+    }
+
+    /// Draws a date axis. Meaningful on a category axis only.
+    #[must_use]
+    pub fn dates(mut self, unit: DateUnit) -> Self {
+        self.date_unit = Some(unit);
         self
     }
 }
@@ -345,6 +890,8 @@ impl Axis {
 /// Which positions are legal depends on the chart kind; an illegal one is
 /// refused at render time with [`ChartError::InvalidDataLabelPosition`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum DataLabelPosition {
     /// Centred on the point or bar.
@@ -398,7 +945,10 @@ impl DataLabelPosition {
 }
 
 /// Labels drawn on the plotted points of every series.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct DataLabels {
     /// Show the value.
@@ -413,6 +963,8 @@ pub struct DataLabels {
     pub position: Option<DataLabelPosition>,
     /// Number format for the labels, e.g. `"#,##0"`.
     pub number_format: Option<String>,
+    /// Font for the labels.
+    pub style: Option<TextStyle>,
 }
 
 impl DataLabels {
@@ -458,25 +1010,119 @@ impl DataLabels {
         self.number_format = Some(format.into());
         self
     }
+
+    /// Styles the label text.
+    #[must_use]
+    pub fn style(mut self, style: TextStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+/// A further set of series drawn over a chart's own, optionally against a
+/// second value axis — a column chart with a line on the right-hand scale.
+///
+/// Combining is limited to what Excel draws on one shared category axis:
+/// column, line and area kinds, with the same orientation as the chart's own.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+pub struct Plot {
+    pub(crate) kind: ChartKind,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) series: Vec<Series>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) secondary_axis: bool,
+}
+
+impl Plot {
+    /// An empty plot of `kind` on the primary axes.
+    pub fn new(kind: ChartKind) -> Self {
+        Self {
+            kind,
+            series: Vec::new(),
+            secondary_axis: false,
+        }
+    }
+
+    /// Appends a series.
+    #[must_use]
+    pub fn series(mut self, series: Series) -> Self {
+        self.series.push(series);
+        self
+    }
+
+    /// Plots against a second value axis on the right, configured with
+    /// [`ChartSpec::secondary_value_axis`].
+    #[must_use]
+    pub fn on_secondary_axis(mut self) -> Self {
+        self.secondary_axis = true;
+        self
+    }
+}
+
+#[cfg(feature = "serde")]
+fn default_gap_width() -> u16 {
+    150
+}
+
+#[cfg(feature = "serde")]
+fn default_hole_size() -> u8 {
+    50
+}
+
+#[cfg(feature = "serde")]
+fn default_bubble_scale() -> u16 {
+    100
 }
 
 /// A chart, described rather than drawn.
 ///
 /// Every method other than [`ChartSpec::new`] is optional: a spec with one
 /// series renders a valid chart.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct ChartSpec {
     pub(crate) kind: ChartKind,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) series: Vec<Series>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) legend: LegendPosition,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) category_axis: Axis,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) value_axis: Axis,
+    #[cfg_attr(feature = "serde", serde(default = "default_gap_width"))]
     pub(crate) gap_width: u16,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) overlap: Option<i16>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) data_labels: Option<DataLabels>,
+    #[cfg_attr(feature = "serde", serde(default = "default_hole_size"))]
     pub(crate) hole_size: u8,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) first_slice_angle: u16,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) title_style: Option<TextStyle>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) text_style: Option<TextStyle>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) legend_overlay: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) legend_style: Option<TextStyle>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) chart_area: Option<AreaStyle>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) plot_area: Option<AreaStyle>,
+    #[cfg_attr(feature = "serde", serde(default, rename = "plots"))]
+    pub(crate) extra_plots: Vec<Plot>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) secondary_value_axis: Axis,
+    #[cfg_attr(feature = "serde", serde(default = "default_bubble_scale"))]
+    pub(crate) bubble_scale: u16,
 }
 
 impl ChartSpec {
@@ -495,6 +1141,15 @@ impl ChartSpec {
             data_labels: None,
             hole_size: 50,
             first_slice_angle: 0,
+            title_style: None,
+            text_style: None,
+            legend_overlay: false,
+            legend_style: None,
+            chart_area: None,
+            plot_area: None,
+            extra_plots: Vec::new(),
+            secondary_value_axis: Axis::default(),
+            bubble_scale: 100,
         }
     }
 
@@ -580,6 +1235,71 @@ impl ChartSpec {
         self
     }
 
+    /// Styles the chart title.
+    #[must_use]
+    pub fn title_style(mut self, style: TextStyle) -> Self {
+        self.title_style = Some(style);
+        self
+    }
+
+    /// The default font for every piece of text in the chart. Titles, axes,
+    /// legend and labels inherit it unless they set their own.
+    #[must_use]
+    pub fn text_style(mut self, style: TextStyle) -> Self {
+        self.text_style = Some(style);
+        self
+    }
+
+    /// Lets the legend sit on top of the plot instead of shrinking it.
+    #[must_use]
+    pub fn legend_overlay(mut self, overlay: bool) -> Self {
+        self.legend_overlay = overlay;
+        self
+    }
+
+    /// Styles the legend text.
+    #[must_use]
+    pub fn legend_style(mut self, style: TextStyle) -> Self {
+        self.legend_style = Some(style);
+        self
+    }
+
+    /// Fill and border of the whole chart.
+    #[must_use]
+    pub fn chart_area(mut self, style: AreaStyle) -> Self {
+        self.chart_area = Some(style);
+        self
+    }
+
+    /// Fill and border of the plot area, the rectangle inside the axes.
+    #[must_use]
+    pub fn plot_area(mut self, style: AreaStyle) -> Self {
+        self.plot_area = Some(style);
+        self
+    }
+
+    /// Draws further series over the chart's own; see [`Plot`].
+    #[must_use]
+    pub fn plot(mut self, plot: Plot) -> Self {
+        self.extra_plots.push(plot);
+        self
+    }
+
+    /// Configures the right-hand value axis used by plots added with
+    /// [`Plot::on_secondary_axis`].
+    #[must_use]
+    pub fn secondary_value_axis(mut self, axis: Axis) -> Self {
+        self.secondary_value_axis = axis;
+        self
+    }
+
+    /// Bubble size as a percentage of the default, 0-300. Bubble charts only.
+    #[must_use]
+    pub fn bubble_scale(mut self, percent: u16) -> Self {
+        self.bubble_scale = percent;
+        self
+    }
+
     /// Draws data labels on every series.
     #[must_use]
     pub fn data_labels(mut self, labels: DataLabels) -> Self {
@@ -632,6 +1352,17 @@ impl ChartPart {
     /// The content type every chart part declares.
     pub const CONTENT_TYPE: &'static str =
         "application/vnd.openxmlformats-officedocument.drawingml.chart+xml";
+
+    /// The `[Content_Types].xml` entry for this part, ready to insert before
+    /// `</Types>`. `part_name` is the package path with a leading slash, e.g.
+    /// `"/xl/charts/chart1.xml"`.
+    pub fn content_types_override(part_name: &str) -> String {
+        format!(
+            r#"<Override PartName="{}" ContentType="{}"/>"#,
+            crate::xml::escape(part_name),
+            Self::CONTENT_TYPE,
+        )
+    }
 }
 
 #[cfg(test)]
