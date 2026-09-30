@@ -55,9 +55,10 @@ pub use error::ChartError;
 pub use metrics::{two_cell_anchor, CellAnchor, RowMetrics, TwoCellAnchor, UnknownHeight};
 pub use spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
-    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
-    LegendPosition, MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Position, Series,
-    SeriesName, TextStyle, TickLabels, TickMark, Trendline, TrendlineKind,
+    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Gradient,
+    GradientStop, Layout, LegendPosition, MarkerSymbol, Paint, Pattern, PatternKind, Plot,
+    PointFormat, PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, TickMark,
+    Trendline, TrendlineKind,
 };
 pub use template::TemplateChart;
 

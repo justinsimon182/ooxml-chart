@@ -9,6 +9,7 @@ use ooxml_chart::{
     MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
     TickLabels, Trendline, TrendlineKind,
 };
+use ooxml_chart::{Gradient, Paint, Pattern, PatternKind};
 use std::{env, fs, path::PathBuf};
 
 fn main() {
@@ -447,6 +448,44 @@ fn main() {
                             "Down".into(),
                             "Up".into(),
                         ]),
+                ),
+        ),
+        (
+            "fill_gradient",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Gradient fills")
+                .chart_area(
+                    AreaStyle::new().fill_paint(Paint::Gradient(Gradient::linear(
+                        90,
+                        [(0, "F8F6F0"), (100, "FFFFFF")],
+                    ))),
+                )
+                .series(series("North", "B", "8E0DD1").with_fill(Paint::Gradient(
+                    Gradient::linear(0, [(0, "8E0DD1"), (50, "AF51F1"), (100, "28EAE4")]),
+                ))),
+        ),
+        (
+            "fill_pattern",
+            ChartSpec::new(ChartKind::Pie)
+                .title("Pattern fills")
+                .series(
+                    series("Share", "B", "8E0DD1")
+                        .with_point(
+                            0,
+                            PointFormat::new().fill(Paint::Pattern(Pattern::new(
+                                PatternKind::WideUpwardDiagonal,
+                                "8E0DD1",
+                                "F8F6F0",
+                            ))),
+                        )
+                        .with_point(
+                            1,
+                            PointFormat::new().fill(Paint::Pattern(Pattern::new(
+                                PatternKind::Percent50,
+                                "0090B2",
+                                "FFFFFF",
+                            ))),
+                        ),
                 ),
         ),
         (

@@ -326,6 +326,24 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     let cells = spec.data_labels.as_ref().is_some_and(|l| l.cells);
     for plot in plots {
         for series in plot.series {
+            if let Some(paint) = &series.fill {
+                let fillable = matches!(
+                    plot.family,
+                    Family::Bar { .. }
+                        | Family::Area { .. }
+                        | Family::Bubble
+                        | Family::Radar { filled: true }
+                );
+                if !fillable {
+                    return unsupported(format!("a series fill on {:?}", plot.kind));
+                }
+                check_paint(paint)?;
+            }
+            for (_, point) in &series.points {
+                if let Some(paint) = &point.fill {
+                    check_paint(paint)?;
+                }
+            }
             match (&series.label_range, cells) {
                 (Some(reference), _) if reference.trim().is_empty() => {
                     return unsupported("an empty label range".to_string());
@@ -690,11 +708,44 @@ fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
     Ok(())
 }
 
+/// Colours, stop counts and angles of a fill or line.
+fn check_paint(paint: &Paint) -> Result<(), ChartError> {
+    match paint {
+        Paint::None => {}
+        Paint::Color(color) => check_color(color)?,
+        Paint::Gradient(gradient) => {
+            let invalid = |reason| Err(ChartError::InvalidFill { reason });
+            if !(2..=10).contains(&gradient.stops.len()) {
+                return invalid("a gradient needs two to ten stops");
+            }
+            if gradient.angle > 359 {
+                return invalid("a gradient angle is from 0 to 359 degrees");
+            }
+            if gradient.stops.iter().any(|stop| stop.position > 100) {
+                return invalid("a gradient stop position is from 0 to 100 percent");
+            }
+            if gradient
+                .stops
+                .windows(2)
+                .any(|pair| pair[0].position > pair[1].position)
+            {
+                return invalid("gradient stop positions must not decrease");
+            }
+            for stop in &gradient.stops {
+                check_color(&stop.color)?;
+            }
+        }
+        Paint::Pattern(pattern) => {
+            check_color(&pattern.foreground)?;
+            check_color(&pattern.background)?;
+        }
+    }
+    Ok(())
+}
+
 fn check_area_style(style: &AreaStyle) -> Result<(), ChartError> {
     for paint in [&style.fill, &style.border].into_iter().flatten() {
-        if let Paint::Color(color) = paint {
-            check_color(color)?;
-        }
+        check_paint(paint)?;
     }
     if let Some(points) = style.border_width_pt {
         check_line_width(points)?;
@@ -796,8 +847,8 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
         }
         check_position(position)?;
     }
-    if let Some(Paint::Color(color)) = &axis.line {
-        check_color(color)?;
+    if let Some(paint) = &axis.line {
+        check_paint(paint)?;
     }
     if let Some(points) = axis.line_width_pt {
         check_line_width(points)?;
@@ -1204,8 +1255,12 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
         Family::Bar { .. }
         | Family::Area { .. }
         | Family::Bubble
-        | Family::Radar { filled: true } => color
-            .map(|rgb| format!("<c:spPr>{}</c:spPr>", solid(rgb)))
+        | Family::Radar { filled: true } => series
+            .fill
+            .as_ref()
+            .map(fill_xml)
+            .or_else(|| color.map(solid))
+            .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
             .unwrap_or_default(),
         Family::Pie | Family::Doughnut => String::new(),
         Family::Line | Family::Radar { filled: false } | Family::Scatter => {
@@ -1279,9 +1334,11 @@ fn points_xml(plot: &PlotRef<'_>, series: &Series) -> String {
                 .map(|percent| format!(r#"<c:explosion val="{percent}"/>"#))
                 .unwrap_or_default();
             let fill = point
-                .color
-                .as_deref()
-                .map(|rgb| format!("<c:spPr>{}</c:spPr>", solid(rgb)))
+                .fill
+                .as_ref()
+                .map(fill_xml)
+                .or_else(|| point.color.as_deref().map(solid))
+                .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
                 .unwrap_or_default();
             // A point that changes nothing here (e.g. it only sets a marker)
             // would be an empty `<c:dPt>`.
@@ -1514,16 +1571,44 @@ fn tx_pr_xml(style: Option<&TextStyle>, rotation: Option<i16>) -> String {
     )
 }
 
+/// The fill element for a paint: `<a:noFill/>`, `<a:solidFill>`,
+/// `<a:gradFill>` or `<a:pattFill>`.
+fn fill_xml(paint: &Paint) -> String {
+    let color = |rgb: &str| format!(r#"<a:srgbClr val="{}"/>"#, rgb.to_ascii_uppercase());
+    match paint {
+        Paint::None => "<a:noFill/>".to_string(),
+        Paint::Color(rgb) => solid(rgb),
+        Paint::Gradient(gradient) => {
+            let stops: String = gradient
+                .stops
+                .iter()
+                .map(|stop| {
+                    format!(
+                        r#"<a:gs pos="{}">{}</a:gs>"#,
+                        u32::from(stop.position) * 1000,
+                        color(&stop.color)
+                    )
+                })
+                .collect();
+            format!(
+                r#"<a:gradFill rotWithShape="1"><a:gsLst>{stops}</a:gsLst><a:lin ang="{}" scaled="0"/></a:gradFill>"#,
+                u32::from(gradient.angle) * 60_000
+            )
+        }
+        Paint::Pattern(pattern) => format!(
+            r#"<a:pattFill prst="{}"><a:fgClr>{}</a:fgClr><a:bgClr>{}</a:bgClr></a:pattFill>"#,
+            pattern.kind.code(),
+            color(&pattern.foreground),
+            color(&pattern.background)
+        ),
+    }
+}
+
 fn sp_pr_xml(style: &AreaStyle) -> String {
-    let fill = match &style.fill {
-        Some(Paint::Color(rgb)) => solid(rgb),
-        Some(Paint::None) => "<a:noFill/>".to_string(),
-        None => String::new(),
-    };
+    let fill = style.fill.as_ref().map(fill_xml).unwrap_or_default();
     let width = line_width_attr(style.border_width_pt);
     let line = match &style.border {
-        Some(Paint::Color(rgb)) => format!("<a:ln{width}>{}</a:ln>", solid(rgb)),
-        Some(Paint::None) => format!("<a:ln{width}><a:noFill/></a:ln>"),
+        Some(paint) => format!("<a:ln{width}>{}</a:ln>", fill_xml(paint)),
         None if !width.is_empty() => format!("<a:ln{width}/>"),
         None => String::new(),
     };

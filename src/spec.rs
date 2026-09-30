@@ -137,6 +137,8 @@ impl MarkerSymbol {
 pub struct PointFormat {
     /// Fill colour as `RRGGBB`.
     pub color: Option<String>,
+    /// A gradient, pattern or other fill; it wins over `color`.
+    pub fill: Option<Paint>,
     /// How far a pie slice is pulled out from the centre, as a percentage of
     /// the radius (0-400). Pie and doughnut only.
     pub explosion: Option<u16>,
@@ -163,6 +165,13 @@ impl PointFormat {
     #[must_use]
     pub fn color(mut self, rgb: impl Into<String>) -> Self {
         self.color = Some(rgb.into());
+        self
+    }
+
+    /// Fills the point with a gradient, a pattern or any other [`Paint`].
+    #[must_use]
+    pub fn fill(mut self, paint: Paint) -> Self {
+        self.fill = Some(paint);
         self
     }
 
@@ -317,6 +326,11 @@ pub struct Series {
     /// colour would flatten the slices; use [`Series::with_point`] there.
     #[cfg_attr(feature = "serde", serde(default))]
     pub color: Option<String>,
+    /// A gradient, pattern or other fill for bars, areas, bubbles and filled
+    /// radar; it wins over `color` there. Refused on line-like kinds and on
+    /// pie and doughnut, which colour points: see [`PointFormat::fill`].
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub fill: Option<Paint>,
     /// Line width in points.
     #[cfg_attr(feature = "serde", serde(default))]
     pub line_width_pt: Option<f64>,
@@ -368,6 +382,7 @@ impl Series {
             categories: None,
             values: values.into(),
             color: None,
+            fill: None,
             line_width_pt: None,
             smooth: false,
             marker: None,
@@ -387,6 +402,13 @@ impl Series {
     #[must_use]
     pub fn with_categories(mut self, reference: impl Into<String>) -> Self {
         self.categories = Some(reference.into());
+        self
+    }
+
+    /// Fills the series with a gradient, a pattern or any other [`Paint`].
+    #[must_use]
+    pub fn with_fill(mut self, paint: Paint) -> Self {
+        self.fill = Some(paint);
         self
     }
 
@@ -858,15 +880,275 @@ impl TextStyle {
     }
 }
 
-/// A fill or line: nothing, or a solid colour.
+/// A fill or line: nothing, a solid colour, a gradient or a pattern.
+///
+/// A gradient or pattern suits fills (chart and plot areas, bars, areas,
+/// slices) and is allowed on lines too; Excel draws them as it would from its
+/// own dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
 pub enum Paint {
     /// Draw nothing.
     None,
     /// A solid colour, six hex digits without `#`.
     Color(String),
+    /// A linear colour blend.
+    Gradient(Gradient),
+    /// A two-colour pattern.
+    Pattern(Pattern),
+}
+
+/// One colour stop of a [`Gradient`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct GradientStop {
+    /// Where the stop sits along the gradient, as a percentage from 0 to 100.
+    pub position: u8,
+    /// Its colour, six hex digits without `#`.
+    pub color: String,
+}
+
+/// A linear gradient: two to ten colour stops blended along an angle.
+///
+/// `angle` runs clockwise from left-to-right: 0 blends left to right, 90 top
+/// to bottom. Checked at render time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Gradient {
+    /// Direction in degrees, 0 to 359.
+    pub angle: u16,
+    /// The stops, two to ten, positions not decreasing.
+    pub stops: Vec<GradientStop>,
+}
+
+impl Gradient {
+    /// A gradient at `angle` degrees through `stops`, each a position
+    /// (percent) and a colour: `Gradient::linear(90, [(0, "8E0DD1"), (100, "FFFFFF")])`.
+    pub fn linear<C: Into<String>>(angle: u16, stops: impl IntoIterator<Item = (u8, C)>) -> Self {
+        Self {
+            angle,
+            stops: stops
+                .into_iter()
+                .map(|(position, color)| GradientStop {
+                    position,
+                    color: color.into(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// A preset two-colour pattern, as in Excel's "Pattern fill" list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum PatternKind {
+    /// 5% foreground.
+    Percent5,
+    /// 10% foreground.
+    Percent10,
+    /// 20% foreground.
+    Percent20,
+    /// 25% foreground.
+    Percent25,
+    /// 30% foreground.
+    Percent30,
+    /// 40% foreground.
+    Percent40,
+    /// 50% foreground.
+    Percent50,
+    /// 60% foreground.
+    Percent60,
+    /// 70% foreground.
+    Percent70,
+    /// 75% foreground.
+    Percent75,
+    /// 80% foreground.
+    Percent80,
+    /// 90% foreground.
+    Percent90,
+    /// Horizontal stripes.
+    Horizontal,
+    /// Vertical stripes.
+    Vertical,
+    /// Light horizontal stripes.
+    LightHorizontal,
+    /// Light vertical stripes.
+    LightVertical,
+    /// Dark horizontal stripes.
+    DarkHorizontal,
+    /// Dark vertical stripes.
+    DarkVertical,
+    /// Narrow horizontal stripes.
+    NarrowHorizontal,
+    /// Narrow vertical stripes.
+    NarrowVertical,
+    /// Dashed horizontal stripes.
+    DashedHorizontal,
+    /// Dashed vertical stripes.
+    DashedVertical,
+    /// Horizontal and vertical lines.
+    Cross,
+    /// Downward diagonal stripes.
+    DownwardDiagonal,
+    /// Upward diagonal stripes.
+    UpwardDiagonal,
+    /// Light downward diagonal stripes.
+    LightDownwardDiagonal,
+    /// Light upward diagonal stripes.
+    LightUpwardDiagonal,
+    /// Dark downward diagonal stripes.
+    DarkDownwardDiagonal,
+    /// Dark upward diagonal stripes.
+    DarkUpwardDiagonal,
+    /// Wide downward diagonal stripes.
+    WideDownwardDiagonal,
+    /// Wide upward diagonal stripes.
+    WideUpwardDiagonal,
+    /// Dashed downward diagonal stripes.
+    DashedDownwardDiagonal,
+    /// Dashed upward diagonal stripes.
+    DashedUpwardDiagonal,
+    /// Crossing diagonal lines.
+    DiagonalCross,
+    /// Small checkerboard.
+    SmallCheckerBoard,
+    /// Large checkerboard.
+    LargeCheckerBoard,
+    /// Small grid.
+    SmallGrid,
+    /// Large grid.
+    LargeGrid,
+    /// Dotted grid.
+    DottedGrid,
+    /// Small confetti.
+    SmallConfetti,
+    /// Large confetti.
+    LargeConfetti,
+    /// Horizontal bricks.
+    HorizontalBrick,
+    /// Diagonal bricks.
+    DiagonalBrick,
+    /// Solid diamonds.
+    SolidDiamond,
+    /// Open diamonds.
+    OpenDiamond,
+    /// Dotted diamonds.
+    DottedDiamond,
+    /// Plaid.
+    Plaid,
+    /// Spheres.
+    Sphere,
+    /// Weave.
+    Weave,
+    /// Divots.
+    Divot,
+    /// Shingles.
+    Shingle,
+    /// Waves.
+    Wave,
+    /// Trellis.
+    Trellis,
+    /// Zigzag.
+    ZigZag,
+}
+
+impl PatternKind {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            PatternKind::Percent5 => "pct5",
+            PatternKind::Percent10 => "pct10",
+            PatternKind::Percent20 => "pct20",
+            PatternKind::Percent25 => "pct25",
+            PatternKind::Percent30 => "pct30",
+            PatternKind::Percent40 => "pct40",
+            PatternKind::Percent50 => "pct50",
+            PatternKind::Percent60 => "pct60",
+            PatternKind::Percent70 => "pct70",
+            PatternKind::Percent75 => "pct75",
+            PatternKind::Percent80 => "pct80",
+            PatternKind::Percent90 => "pct90",
+            PatternKind::Horizontal => "horz",
+            PatternKind::Vertical => "vert",
+            PatternKind::LightHorizontal => "ltHorz",
+            PatternKind::LightVertical => "ltVert",
+            PatternKind::DarkHorizontal => "dkHorz",
+            PatternKind::DarkVertical => "dkVert",
+            PatternKind::NarrowHorizontal => "narHorz",
+            PatternKind::NarrowVertical => "narVert",
+            PatternKind::DashedHorizontal => "dashHorz",
+            PatternKind::DashedVertical => "dashVert",
+            PatternKind::Cross => "cross",
+            PatternKind::DownwardDiagonal => "dnDiag",
+            PatternKind::UpwardDiagonal => "upDiag",
+            PatternKind::LightDownwardDiagonal => "ltDnDiag",
+            PatternKind::LightUpwardDiagonal => "ltUpDiag",
+            PatternKind::DarkDownwardDiagonal => "dkDnDiag",
+            PatternKind::DarkUpwardDiagonal => "dkUpDiag",
+            PatternKind::WideDownwardDiagonal => "wdDnDiag",
+            PatternKind::WideUpwardDiagonal => "wdUpDiag",
+            PatternKind::DashedDownwardDiagonal => "dashDnDiag",
+            PatternKind::DashedUpwardDiagonal => "dashUpDiag",
+            PatternKind::DiagonalCross => "diagCross",
+            PatternKind::SmallCheckerBoard => "smCheck",
+            PatternKind::LargeCheckerBoard => "lgCheck",
+            PatternKind::SmallGrid => "smGrid",
+            PatternKind::LargeGrid => "lgGrid",
+            PatternKind::DottedGrid => "dotGrid",
+            PatternKind::SmallConfetti => "smConfetti",
+            PatternKind::LargeConfetti => "lgConfetti",
+            PatternKind::HorizontalBrick => "horzBrick",
+            PatternKind::DiagonalBrick => "diagBrick",
+            PatternKind::SolidDiamond => "solidDmnd",
+            PatternKind::OpenDiamond => "openDmnd",
+            PatternKind::DottedDiamond => "dotDmnd",
+            PatternKind::Plaid => "plaid",
+            PatternKind::Sphere => "sphere",
+            PatternKind::Weave => "weave",
+            PatternKind::Divot => "divot",
+            PatternKind::Shingle => "shingle",
+            PatternKind::Wave => "wave",
+            PatternKind::Trellis => "trellis",
+            PatternKind::ZigZag => "zigZag",
+        }
+    }
+}
+
+/// A pattern fill: a preset pattern drawn in a foreground colour over a
+/// background colour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Pattern {
+    /// Which pattern.
+    pub kind: PatternKind,
+    /// Colour of the pattern's marks, six hex digits without `#`.
+    pub foreground: String,
+    /// Colour behind them, six hex digits without `#`.
+    pub background: String,
+}
+
+impl Pattern {
+    /// A `kind` pattern in `foreground` over `background`.
+    pub fn new(
+        kind: PatternKind,
+        foreground: impl Into<String>,
+        background: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind,
+            foreground: foreground.into(),
+            background: background.into(),
+        }
+    }
 }
 
 /// The fill and border of the chart area or the plot area.
@@ -894,6 +1176,20 @@ impl AreaStyle {
     #[must_use]
     pub fn fill(mut self, rgb: impl Into<String>) -> Self {
         self.fill = Some(Paint::Color(rgb.into()));
+        self
+    }
+
+    /// Fills with a gradient, a pattern or any other [`Paint`].
+    #[must_use]
+    pub fn fill_paint(mut self, paint: Paint) -> Self {
+        self.fill = Some(paint);
+        self
+    }
+
+    /// Draws the border with a gradient, a pattern or any other [`Paint`].
+    #[must_use]
+    pub fn border_paint(mut self, paint: Paint) -> Self {
+        self.border = Some(paint);
         self
     }
 
@@ -1319,6 +1615,13 @@ impl Axis {
     #[must_use]
     pub fn line(mut self, rgb: impl Into<String>) -> Self {
         self.line = Some(Paint::Color(rgb.into()));
+        self
+    }
+
+    /// Draws the axis line with a gradient, a pattern or any other [`Paint`].
+    #[must_use]
+    pub fn line_paint(mut self, paint: Paint) -> Self {
+        self.line = Some(paint);
         self
     }
 

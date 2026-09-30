@@ -226,6 +226,14 @@ pub enum ChartError {
         reason: &'static str,
     },
 
+    /// A gradient Excel cannot draw: too few or too many stops, stops out of
+    /// order or range, or an angle outside 0 to 359.
+    #[error("the gradient is invalid: {reason}")]
+    InvalidFill {
+        /// What is wrong with it.
+        reason: &'static str,
+    },
+
     /// A data label position the chart kind does not allow.
     ///
     /// Excel does not ignore an illegal `<c:dLblPos>` â€” it reports the file as

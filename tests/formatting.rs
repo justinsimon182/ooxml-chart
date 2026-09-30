@@ -1954,3 +1954,202 @@ mod label_cells {
         );
     }
 }
+
+// --- Gradient and pattern fills -----------------------------------------------------
+
+mod fills {
+    use super::*;
+    use ooxml_chart::{Gradient, Paint, Pattern, PatternKind};
+
+    fn gradient() -> Paint {
+        Paint::Gradient(Gradient::linear(90, [(0, "8e0dd1"), (100, "FFFFFF")]))
+    }
+
+    const GRADIENT_XML: &str = r#"<a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:srgbClr val="8E0DD1"/></a:gs><a:gs pos="100000"><a:srgbClr val="FFFFFF"/></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill>"#;
+
+    #[test]
+    fn a_gradient_area_fill_blends_along_its_angle_in_thousandths_of_a_percent() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .chart_area(AreaStyle::new().fill_paint(gradient()))
+                .series(series()),
+        );
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(&format!("<c:spPr>{GRADIENT_XML}</c:spPr>")),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_pattern_writes_its_preset_and_both_colours() {
+        let paint = Paint::Pattern(Pattern::new(
+            PatternKind::WideUpwardDiagonal,
+            "8e0dd1",
+            "F8F6F0",
+        ));
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .plot_area(AreaStyle::new().fill_paint(paint))
+                .series(series()),
+        );
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<a:pattFill prst="wdUpDiag"><a:fgClr><a:srgbClr val="8E0DD1"/></a:fgClr><a:bgClr><a:srgbClr val="F8F6F0"/></a:bgClr></a:pattFill>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_series_fill_beats_its_colour_on_a_bar() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_color("0090B2").with_fill(gradient())),
+        );
+        assert!(xml.contains(GRADIENT_XML), "{xml}");
+        assert!(!xml.contains("0090B2"), "{xml}");
+    }
+
+    #[test]
+    fn a_point_fill_beats_its_colour_on_a_pie_slice() {
+        let xml =
+            render(ChartSpec::new(ChartKind::Pie).series(
+                series().with_point(1, PointFormat::new().color("0090B2").fill(gradient())),
+            ));
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(&format!(
+                r#"<c:dPt><c:idx val="1"/><c:spPr>{GRADIENT_XML}</c:spPr></c:dPt>"#
+            )),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_border_and_an_axis_line_take_a_paint() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .chart_area(AreaStyle::new().border_paint(gradient()).border_width(2.0))
+                .category_axis(Axis::default().line_paint(gradient()))
+                .series(series()),
+        );
+        assert_well_formed(&xml);
+        assert_eq!(xml.matches(GRADIENT_XML).count(), 2, "{xml}");
+    }
+
+    #[test]
+    fn every_pattern_is_a_schema_preset() {
+        // The gallery validates each code against the schema; here, that
+        // every variant renders and the codes are distinct.
+        let kinds = [
+            PatternKind::Percent5,
+            PatternKind::Horizontal,
+            PatternKind::DarkVertical,
+            PatternKind::DiagonalCross,
+            PatternKind::SmallCheckerBoard,
+            PatternKind::Weave,
+            PatternKind::ZigZag,
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for kind in kinds {
+            let xml = render(
+                ChartSpec::new(ChartKind::Line)
+                    .chart_area(
+                        AreaStyle::new()
+                            .fill_paint(Paint::Pattern(Pattern::new(kind, "000000", "FFFFFF"))),
+                    )
+                    .series(series()),
+            );
+            let start = xml.find("prst=\"").expect("a preset") + 6;
+            let code = xml[start..].split('"').next().unwrap().to_string();
+            assert!(seen.insert(code), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_solid_area_is_unchanged() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .chart_area(AreaStyle::new().fill("F8F6F0"))
+                .series(series()),
+        );
+        assert!(
+            xml.contains(
+                r#"<c:spPr><a:solidFill><a:srgbClr val="F8F6F0"/></a:solidFill></c:spPr>"#
+            ),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn bad_gradients_and_colours_are_refused() {
+        let area = |paint| {
+            ChartSpec::new(ChartKind::Line)
+                .chart_area(AreaStyle::new().fill_paint(paint))
+                .series(series())
+                .render()
+        };
+        let invalid = |paint| {
+            assert!(
+                matches!(area(paint), Err(ChartError::InvalidFill { .. })),
+                "should be refused"
+            )
+        };
+        invalid(Paint::Gradient(Gradient::linear(0, [(0, "000000")])));
+        invalid(Paint::Gradient(Gradient::linear(
+            0,
+            (0..11).map(|n| (n * 10, "000000")),
+        )));
+        invalid(Paint::Gradient(Gradient::linear(
+            360,
+            [(0, "000000"), (100, "FFFFFF")],
+        )));
+        invalid(Paint::Gradient(Gradient::linear(
+            0,
+            [(0, "000000"), (101, "FFFFFF")],
+        )));
+        invalid(Paint::Gradient(Gradient::linear(
+            0,
+            [(60, "000000"), (40, "FFFFFF")],
+        )));
+        assert!(matches!(
+            area(Paint::Gradient(Gradient::linear(
+                0,
+                [(0, "000000"), (100, "nope")]
+            ))),
+            Err(ChartError::InvalidColor(_))
+        ));
+        assert!(matches!(
+            area(Paint::Pattern(Pattern::new(
+                PatternKind::Plaid,
+                "000000",
+                "xx"
+            ))),
+            Err(ChartError::InvalidColor(_))
+        ));
+    }
+
+    #[test]
+    fn a_series_fill_on_a_line_or_a_pie_is_refused() {
+        for kind in [ChartKind::Line, ChartKind::Scatter, ChartKind::Pie] {
+            let result = ChartSpec::new(kind)
+                .series(series().with_fill(gradient()))
+                .render();
+            assert!(
+                matches!(result, Err(ChartError::Unsupported { .. })),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bad_point_fill_is_refused() {
+        let result = ChartSpec::new(ChartKind::Pie)
+            .series(series().with_point(
+                0,
+                PointFormat::new().fill(Paint::Gradient(Gradient::linear(0, [(0, "000000")]))),
+            ))
+            .render();
+        assert!(matches!(result, Err(ChartError::InvalidFill { .. })));
+    }
+}
