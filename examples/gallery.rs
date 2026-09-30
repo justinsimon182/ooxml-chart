@@ -76,6 +76,135 @@ fn main() {
         let part = spec.render().expect("a chart");
         fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
     }
+    // Every kind again with every option that applies to it switched on, so a
+    // schema validator sees each code path.
+    for (file, kind) in kinds {
+        let round = matches!(kind, ChartKind::Pie | ChartKind::Doughnut);
+        let trendable = matches!(
+            kind,
+            ChartKind::Line
+                | ChartKind::LineMarkers
+                | ChartKind::Area
+                | ChartKind::ColumnClustered
+                | ChartKind::BarClustered
+                | ChartKind::Scatter
+                | ChartKind::ScatterLines
+        );
+        let mut first = series("North", "B", "8E0DD1")
+            .with_line_width(2.0)
+            .with_marker(MarkerSymbol::Square, 6)
+            .with_point(1, PointFormat::new().color("0090B2").explosion(8));
+        if trendable {
+            first = first.with_trendline(
+                Trendline::new(TrendlineKind::Polynomial(2))
+                    .name("Fit")
+                    .color("104991")
+                    .width(1.0)
+                    .show_r_squared(),
+            );
+        }
+        let mut spec = ChartSpec::new(kind)
+            .title(format!("{file} (full)"))
+            .title_style(
+                TextStyle::new()
+                    .size(14.0)
+                    .bold(true)
+                    .color("010102")
+                    .font("Inter"),
+            )
+            .text_style(TextStyle::new().size(9.0))
+            .chart_area(
+                AreaStyle::new()
+                    .fill("F8F6F0")
+                    .border("68248C")
+                    .border_width(1.0),
+            )
+            .plot_area(AreaStyle::new().no_fill())
+            .legend_overlay(true)
+            .legend_style(TextStyle::new().italic(true))
+            .data_labels(
+                DataLabels::values()
+                    .with_category()
+                    .number_format("0.0")
+                    .style(TextStyle::new().size(8.0)),
+            )
+            .series(first);
+        if !round {
+            spec = spec
+                .series(series("South", "C", "0090B2"))
+                .category_axis(
+                    Axis::default()
+                        .title("Quarter")
+                        .minor_gridlines(true)
+                        .major_tick(ooxml_chart::TickMark::Cross)
+                        .tick_labels(TickLabels::Low)
+                        .label_rotation(-30)
+                        .label_style(TextStyle::new().size(8.0)),
+                )
+                .value_axis(
+                    Axis::default()
+                        .title("Value")
+                        .title_style(TextStyle::new().bold(true))
+                        .gridlines(true)
+                        .min(0.0)
+                        .max(20.0)
+                        .major_unit(5.0)
+                        .minor_unit(1.0)
+                        .number_format("0")
+                        .crosses_max(true),
+                );
+        }
+        let part = spec.render().expect("a chart");
+        fs::write(dir.join(format!("{file}_full.xml")), part.xml).expect("write chart");
+    }
+
+    // Drawings hosting a chart, one per anchor type.
+    let frame = || ooxml_chart::GraphicFrame {
+        id: 2,
+        name: "Chart 1".to_string(),
+        relationship_id: "rId1".to_string(),
+        edit_as: None,
+    };
+    let corner = ooxml_chart::CellAnchor {
+        col: 1,
+        col_offset_emu: 0,
+        row: 1,
+        row_offset_emu: 0,
+    };
+    let two = ooxml_chart::TwoCellAnchor {
+        from: corner,
+        to: ooxml_chart::CellAnchor {
+            col: 9,
+            col_offset_emu: 4762,
+            row: 20,
+            row_offset_emu: 9525,
+        },
+    };
+    let drawings = [
+        ("drawing_two_cell", ooxml_chart::Anchor::TwoCell(two)),
+        (
+            "drawing_one_cell",
+            ooxml_chart::Anchor::OneCell {
+                from: corner,
+                width_emu: 5_000_000,
+                height_emu: 3_000_000,
+            },
+        ),
+        (
+            "drawing_absolute",
+            ooxml_chart::Anchor::Absolute {
+                x_emu: 100_000,
+                y_emu: 200_000,
+                width_emu: 5_000_000,
+                height_emu: 3_000_000,
+            },
+        ),
+    ];
+    for (file, anchor) in drawings {
+        let part = ooxml_chart::drawing_part_with(&[(anchor, frame())]);
+        fs::write(dir.join(format!("{file}.xml")), part).expect("write drawing");
+    }
+
     // Features that need more than a kind.
     let extras = [
         (
@@ -151,5 +280,5 @@ fn main() {
         let part = spec.render().expect("a chart");
         fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
     }
-    println!("wrote {} charts to {}", kinds.len() + 5, dir.display());
+    println!("wrote the gallery to {}", dir.display());
 }
