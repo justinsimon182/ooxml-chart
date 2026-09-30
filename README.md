@@ -21,11 +21,13 @@ use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
 
 let part = ChartSpec::new(ChartKind::ColumnClustered)
     .title("Monthly totals")
-    .series(Series {
-        name: SeriesName::Literal("Series A".to_string()),
-        categories: Some("'Sheet1'!$A$3:$A$38".to_string()),
-        values: "'Sheet1'!$C$3:$C$38".to_string(),
-    })
+    .series(
+        Series::new(
+            SeriesName::Literal("Series A".to_string()),
+            "'Sheet1'!$C$3:$C$38",
+        )
+        .with_categories("'Sheet1'!$A$3:$A$38"),
+    )
     .render()
     .expect("a chart");
 
@@ -78,16 +80,51 @@ rule — `floor(points * 1.2)` — is wrong often enough to matter, so
 
 ## Supported chart kinds
 
-Clustered and stacked bar and column, line with and without markers, and pie.
-`ChartKind` is `#[non_exhaustive]`; more can be added without a breaking
-change.
+Clustered, stacked and percent-stacked bar and column; line with and without
+markers; area, stacked area and percent-stacked area; scatter (markers, or
+lines with markers); pie; doughnut; radar. `ChartKind` is `#[non_exhaustive]`;
+more can be added without a breaking change.
+
+## Formatting
+
+```rust
+use ooxml_chart::{
+    Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, MarkerSymbol, Series, SeriesName,
+};
+
+let part = ChartSpec::new(ChartKind::LineMarkers)
+    .value_axis(Axis::default().title("Revenue").number_format("#,##0").min(0.0))
+    .data_labels(DataLabels::values().at(DataLabelPosition::Above))
+    .series(
+        Series::new(SeriesName::Literal("North".to_string()), "'Sheet1'!$B$2:$B$5")
+            .with_categories("'Sheet1'!$A$2:$A$5")
+            .with_color("8E0DD1")
+            .with_line_width(2.25)
+            .with_marker(MarkerSymbol::Circle, 7)
+            // Lets previews that do not recalculate draw the plot.
+            .with_cached_values(vec![4.0, 7.5, 6.0, 9.25]),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Settings Excel would repair away â€” a malformed colour, an inverted axis range,
+a label position the chart kind does not allow â€” are refused with a typed
+`ChartError` rather than written.
+
+`Series`, `Axis` and `DataLabels` are `#[non_exhaustive]`: build them with
+`Series::new` / `Axis::default()` and the builder methods.
+
+Anchors other than `twoCellAnchor` are available through `Anchor` and
+`drawing_part_with`.
 
 ## What this deliberately does not do
 
 - Read or write `.xlsx` files.
 - Register parts in `[Content_Types].xml` or the workbook relationships. It
   hands you the content type and the relationship XML; wiring them in is yours.
-- Reproduce every chart feature Excel has. It covers the kinds above, well.
+- Reproduce every chart feature Excel has. See [ROADMAP.md](ROADMAP.md) for
+  what is not covered yet, such as combination charts and secondary axes.
 
 ## License
 

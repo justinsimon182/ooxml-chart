@@ -24,11 +24,13 @@
 //!
 //! let part = ChartSpec::new(ChartKind::ColumnClustered)
 //!     .title("Monthly totals")
-//!     .series(Series {
-//!         name: SeriesName::Literal("Series A".to_string()),
-//!         categories: Some("'Sheet1'!$A$3:$A$38".to_string()),
-//!         values: "'Sheet1'!$C$3:$C$38".to_string(),
-//!     })
+//!     .series(
+//!         Series::new(
+//!             SeriesName::Literal("Series A".to_string()),
+//!             "'Sheet1'!$C$3:$C$38",
+//!         )
+//!         .with_categories("'Sheet1'!$A$3:$A$38"),
+//!     )
 //!     .render()
 //!     .expect("a chart");
 //!
@@ -46,11 +48,15 @@ mod template;
 mod xml;
 
 pub use drawing::{
-    anchor_xml, drawing_part, drawing_relationships, GraphicFrame, CHART_RELATIONSHIP_TYPE,
+    anchor_xml, anchor_xml_for, drawing_part, drawing_part_with, drawing_relationships, Anchor,
+    GraphicFrame, CHART_RELATIONSHIP_TYPE,
 };
 pub use error::ChartError;
 pub use metrics::{two_cell_anchor, CellAnchor, RowMetrics, TwoCellAnchor, UnknownHeight};
-pub use spec::{Axis, ChartKind, ChartPart, ChartSpec, LegendPosition, Series, SeriesName};
+pub use spec::{
+    Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, LegendPosition,
+    MarkerSymbol, Series, SeriesName,
+};
 pub use template::TemplateChart;
 
 /// The crate README, compiled as a doctest so its examples cannot rot.

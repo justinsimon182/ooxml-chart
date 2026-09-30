@@ -43,13 +43,10 @@ pub struct GraphicFrame {
     pub edit_as: Option<String>,
 }
 
-/// One `<xdr:twoCellAnchor>` hosting one chart.
-#[must_use]
-pub fn anchor_xml(anchor: &TwoCellAnchor, frame: &GraphicFrame) -> String {
+/// The frame and its trailing `<xdr:clientData/>`, shared by every anchor type.
+fn frame_xml(frame: &GraphicFrame) -> String {
     format!(
         concat!(
-            "<xdr:twoCellAnchor{edit_as}>",
-            "{from}{to}",
             r#"<xdr:graphicFrame macro="">"#,
             r#"<xdr:nvGraphicFramePr><xdr:cNvPr id="{id}" name="{name}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"#,
             r#"<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>"#,
@@ -57,18 +54,87 @@ pub fn anchor_xml(anchor: &TwoCellAnchor, frame: &GraphicFrame) -> String {
             r#"<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart""#,
             r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
             r#" r:id="{rid}"/>"#,
-            r#"</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>"#,
+            r#"</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/>"#,
         ),
+        id = frame.id,
+        name = escape(&frame.name),
+        rid = escape(&frame.relationship_id),
+    )
+}
+
+/// One `<xdr:twoCellAnchor>` hosting one chart.
+#[must_use]
+pub fn anchor_xml(anchor: &TwoCellAnchor, frame: &GraphicFrame) -> String {
+    format!(
+        "<xdr:twoCellAnchor{edit_as}>{from}{to}{frame}</xdr:twoCellAnchor>",
         edit_as = match &frame.edit_as {
             Some(value) => format!(r#" editAs="{}""#, escape(value)),
             None => String::new(),
         },
         from = corner_xml("from", &anchor.from),
         to = corner_xml("to", &anchor.to),
-        id = frame.id,
-        name = escape(&frame.name),
-        rid = escape(&frame.relationship_id),
+        frame = frame_xml(frame),
     )
+}
+
+/// Where a chart sits in a drawing.
+///
+/// Prefer [`Anchor::TwoCell`], which is what real workbooks carry and what
+/// [`crate::two_cell_anchor`] computes. The others exist for a chart that must
+/// keep an exact size however the cells beneath it are resized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Anchor {
+    /// Two cell corners; the size is the distance between them.
+    TwoCell(TwoCellAnchor),
+    /// One cell corner and a fixed size in EMU. Moves with its cell, never
+    /// resizes. The schema gives this anchor no `editAs`, so
+    /// [`GraphicFrame::edit_as`] is not written.
+    OneCell {
+        /// The top-left corner.
+        from: CellAnchor,
+        /// Width in EMU.
+        width_emu: u64,
+        /// Height in EMU.
+        height_emu: u64,
+    },
+    /// A fixed position and size on the sheet, in EMU, whatever the cells do.
+    Absolute {
+        /// Distance from the sheet's left edge.
+        x_emu: u64,
+        /// Distance from the sheet's top edge.
+        y_emu: u64,
+        /// Width in EMU.
+        width_emu: u64,
+        /// Height in EMU.
+        height_emu: u64,
+    },
+}
+
+/// One anchor of any type hosting one chart.
+#[must_use]
+pub fn anchor_xml_for(anchor: &Anchor, frame: &GraphicFrame) -> String {
+    match anchor {
+        Anchor::TwoCell(two_cell) => anchor_xml(two_cell, frame),
+        Anchor::OneCell {
+            from,
+            width_emu,
+            height_emu,
+        } => format!(
+            r#"<xdr:oneCellAnchor>{from}<xdr:ext cx="{width_emu}" cy="{height_emu}"/>{frame}</xdr:oneCellAnchor>"#,
+            from = corner_xml("from", from),
+            frame = frame_xml(frame),
+        ),
+        Anchor::Absolute {
+            x_emu,
+            y_emu,
+            width_emu,
+            height_emu,
+        } => format!(
+            r#"<xdr:absoluteAnchor><xdr:pos x="{x_emu}" y="{y_emu}"/><xdr:ext cx="{width_emu}" cy="{height_emu}"/>{frame}</xdr:absoluteAnchor>"#,
+            frame = frame_xml(frame),
+        ),
+    }
 }
 
 fn corner_xml(tag: &str, corner: &CellAnchor) -> String {
@@ -81,18 +147,32 @@ fn corner_xml(tag: &str, corner: &CellAnchor) -> String {
     )
 }
 
+const DRAWING_OPEN: &str = concat!(
+    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#,
+    r#"<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing""#,
+    r#" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#,
+    r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"#,
+);
+
 /// A complete drawing part hosting every anchor given, in order.
 #[must_use]
 pub fn drawing_part(anchors: &[(TwoCellAnchor, GraphicFrame)]) -> Vec<u8> {
     let mut out = String::with_capacity(512 + anchors.len() * 768);
-    out.push_str(concat!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#,
-        r#"<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing""#,
-        r#" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#,
-        r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"#,
-    ));
+    out.push_str(DRAWING_OPEN);
     for (anchor, frame) in anchors {
         out.push_str(&anchor_xml(anchor, frame));
+    }
+    out.push_str("</xdr:wsDr>");
+    out.into_bytes()
+}
+
+/// Like [`drawing_part`], for anchors of any [`Anchor`] type, mixed freely.
+#[must_use]
+pub fn drawing_part_with(anchors: &[(Anchor, GraphicFrame)]) -> Vec<u8> {
+    let mut out = String::with_capacity(512 + anchors.len() * 768);
+    out.push_str(DRAWING_OPEN);
+    for (anchor, frame) in anchors {
+        out.push_str(&anchor_xml_for(anchor, frame));
     }
     out.push_str("</xdr:wsDr>");
     out.into_bytes()

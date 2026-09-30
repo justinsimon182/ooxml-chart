@@ -162,4 +162,44 @@ pub enum ChartError {
         /// `"column"` or `"row"`.
         context: &'static str,
     },
+
+    /// A colour was not six hexadecimal digits, e.g. `"8E0DD1"`.
+    ///
+    /// No leading `#`, no shorthand, no colour names. Refused because Excel
+    /// repairs a chart carrying a malformed `<a:srgbClr>` by discarding it.
+    #[error("{0:?} is not a colour: expected six hexadecimal digits such as \"8E0DD1\"")]
+    InvalidColor(String),
+
+    /// An axis minimum, maximum, or major unit cannot be honoured: a value is
+    /// not finite, the minimum is not below the maximum, or the major unit is
+    /// not positive.
+    #[error("the axis range is invalid: {reason}")]
+    InvalidAxisRange {
+        /// What is wrong with it.
+        reason: &'static str,
+    },
+
+    /// A data label position the chart kind does not allow.
+    ///
+    /// Excel does not ignore an illegal `<c:dLblPos>` â€” it reports the file as
+    /// damaged and drops the chart. Outside-end labels on a stacked column are
+    /// the classic case.
+    #[error("a {position} data label is not allowed on this kind of chart")]
+    InvalidDataLabelPosition {
+        /// The refused position, e.g. `"outside end"`.
+        position: &'static str,
+    },
+
+    /// A numeric setting outside the range OOXML allows.
+    #[error("{field} is {value}, outside {min}..={max}")]
+    OutOfRange {
+        /// The setting, e.g. `"hole size"`.
+        field: &'static str,
+        /// The value supplied.
+        value: i64,
+        /// Smallest allowed.
+        min: i64,
+        /// Largest allowed.
+        max: i64,
+    },
 }

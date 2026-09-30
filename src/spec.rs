@@ -21,15 +21,35 @@ pub enum ChartKind {
     LineMarkers,
     /// A single series as slices of a circle.
     Pie,
+    /// Horizontal bars stacked and scaled so each category totals 100%.
+    BarPercentStacked,
+    /// Vertical columns stacked and scaled so each category totals 100%.
+    ColumnPercentStacked,
+    /// A filled area per series, drawn over one another.
+    Area,
+    /// Filled areas stacked into one running total.
+    AreaStacked,
+    /// Filled areas stacked and scaled so each category totals 100%.
+    AreaPercentStacked,
+    /// Points placed by a numeric x and y, no connecting lines. A series'
+    /// categories reference the x values.
+    Scatter,
+    /// Points placed by a numeric x and y, joined by lines.
+    ScatterLines,
+    /// Like [`ChartKind::Pie`] with the middle cut out. Several series draw
+    /// as concentric rings.
+    Doughnut,
+    /// One spoke per category, a line per series joining the spokes.
+    Radar,
 }
 
 impl ChartKind {
     /// `true` for the kinds plotted against a category and a value axis.
     ///
-    /// Pie is the exception: it has no axes at all, and emitting `<c:axId>` for
-    /// it produces a file Excel refuses.
+    /// Pie and doughnut are the exceptions: they have no axes at all, and
+    /// emitting `<c:axId>` for them produces a file Excel refuses.
     pub(crate) fn has_axes(self) -> bool {
-        !matches!(self, ChartKind::Pie)
+        !matches!(self, ChartKind::Pie | ChartKind::Doughnut)
     }
 }
 
@@ -45,16 +65,148 @@ pub enum SeriesName {
     Reference(String),
 }
 
+/// A point marker's shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MarkerSymbol {
+    /// A filled circle.
+    Circle,
+    /// A square.
+    Square,
+    /// A diamond.
+    Diamond,
+    /// A triangle.
+    Triangle,
+    /// An X.
+    X,
+    /// A star.
+    Star,
+    /// A short horizontal dash.
+    Dash,
+    /// A small dot.
+    Dot,
+    /// A plus sign.
+    Plus,
+    /// No marker: the line alone.
+    None,
+}
+
+impl MarkerSymbol {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            MarkerSymbol::Circle => "circle",
+            MarkerSymbol::Square => "square",
+            MarkerSymbol::Diamond => "diamond",
+            MarkerSymbol::Triangle => "triangle",
+            MarkerSymbol::X => "x",
+            MarkerSymbol::Star => "star",
+            MarkerSymbol::Dash => "dash",
+            MarkerSymbol::Dot => "dot",
+            MarkerSymbol::Plus => "plus",
+            MarkerSymbol::None => "none",
+        }
+    }
+}
+
 /// One plotted series.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `name` and `values` are the required core. Everything else is optional
+/// formatting, set with the `with_*` methods; build with [`Series::new`] so
+/// new options never break the call site.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Series {
     /// What to call it in the legend.
     pub name: SeriesName,
     /// The category labels, e.g. `"'Sheet1'!$A$3:$A$38"`. `None` numbers the
     /// categories 1, 2, 3… which is what Excel does with no category reference.
+    /// On a scatter chart these are the x values.
     pub categories: Option<String>,
     /// The plotted values, e.g. `"'Sheet1'!$C$3:$C$38"`.
     pub values: String,
+    /// Fill (bars, areas) or line (lines, scatter, radar) colour as `RRGGBB`.
+    /// Ignored on pie and doughnut, where one colour would flatten the slices.
+    pub color: Option<String>,
+    /// Line width in points.
+    pub line_width_pt: Option<f64>,
+    /// Draw the line as a smooth curve rather than straight segments.
+    pub smooth: bool,
+    /// Marker shape and size in points (2-72).
+    pub marker: Option<(MarkerSymbol, u8)>,
+    /// Category labels to cache in the part, so viewers that do not
+    /// recalculate can still draw the axis.
+    pub categories_cache: Option<Vec<String>>,
+    /// Values to cache in the part, so viewers that do not recalculate can
+    /// still draw the plot. Non-finite entries are written as blanks.
+    pub values_cache: Option<Vec<f64>>,
+}
+
+impl Series {
+    /// A series with a name and a values reference, unformatted.
+    pub fn new(name: SeriesName, values: impl Into<String>) -> Self {
+        Self {
+            name,
+            categories: None,
+            values: values.into(),
+            color: None,
+            line_width_pt: None,
+            smooth: false,
+            marker: None,
+            categories_cache: None,
+            values_cache: None,
+        }
+    }
+
+    /// Sets the category (or scatter x) reference.
+    #[must_use]
+    pub fn with_categories(mut self, reference: impl Into<String>) -> Self {
+        self.categories = Some(reference.into());
+        self
+    }
+
+    /// Sets the colour, as six hex digits without `#`, e.g. `"8E0DD1"`.
+    /// Checked at render time.
+    #[must_use]
+    pub fn with_color(mut self, rgb: impl Into<String>) -> Self {
+        self.color = Some(rgb.into());
+        self
+    }
+
+    /// Sets the line width in points.
+    #[must_use]
+    pub fn with_line_width(mut self, points: f64) -> Self {
+        self.line_width_pt = Some(points);
+        self
+    }
+
+    /// Draws the line as a smooth curve.
+    #[must_use]
+    pub fn with_smooth(mut self, smooth: bool) -> Self {
+        self.smooth = smooth;
+        self
+    }
+
+    /// Sets the marker. `size` is in points and is checked at render time
+    /// (2-72).
+    #[must_use]
+    pub fn with_marker(mut self, symbol: MarkerSymbol, size: u8) -> Self {
+        self.marker = Some((symbol, size));
+        self
+    }
+
+    /// Caches category labels in the part.
+    #[must_use]
+    pub fn with_cached_categories(mut self, labels: Vec<String>) -> Self {
+        self.categories_cache = Some(labels);
+        self
+    }
+
+    /// Caches values in the part.
+    #[must_use]
+    pub fn with_cached_values(mut self, values: Vec<f64>) -> Self {
+        self.values_cache = Some(values);
+        self
+    }
 }
 
 /// Where the legend goes, if anywhere.
@@ -87,7 +239,11 @@ impl LegendPosition {
 }
 
 /// One axis of a chart.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Build with [`Axis::default`] and the builder methods; the struct is
+/// `#[non_exhaustive]` so new options never break the call site.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Axis {
     /// An axis title, if any.
     pub title: Option<String>,
@@ -96,16 +252,211 @@ pub struct Axis {
     /// Whether the axis is drawn. A deleted axis still exists and still scales
     /// the plot — it is just not shown.
     pub visible: bool,
+    /// An Excel number format for the tick labels, e.g. `"0.0%"`.
+    pub number_format: Option<String>,
+    /// Fixed scale minimum. `None` lets Excel choose. Value axes and the x axis
+    /// of a scatter only; not written for category axes.
+    pub min: Option<f64>,
+    /// Fixed scale maximum. `None` lets Excel choose.
+    pub max: Option<f64>,
+    /// Distance between major ticks. Value axes and the x axis of a scatter
+    /// only. `None` lets Excel choose.
+    pub major_unit: Option<f64>,
+    /// Plot from high to low instead of low to high.
+    pub reversed: bool,
 }
 
 impl Default for Axis {
-    /// Visible, untitled, no gridlines.
+    /// Visible, untitled, no gridlines, scaled automatically.
     fn default() -> Self {
         Self {
             title: None,
             major_gridlines: false,
             visible: true,
+            number_format: None,
+            min: None,
+            max: None,
+            major_unit: None,
+            reversed: false,
         }
+    }
+}
+
+impl Axis {
+    /// Titles the axis.
+    #[must_use]
+    pub fn title(mut self, text: impl Into<String>) -> Self {
+        self.title = Some(text.into());
+        self
+    }
+
+    /// Turns major gridlines on or off.
+    #[must_use]
+    pub fn gridlines(mut self, on: bool) -> Self {
+        self.major_gridlines = on;
+        self
+    }
+
+    /// Hides the axis without removing it from the scaling.
+    #[must_use]
+    pub fn hidden(mut self) -> Self {
+        self.visible = false;
+        self
+    }
+
+    /// Sets the tick-label number format.
+    #[must_use]
+    pub fn number_format(mut self, format: impl Into<String>) -> Self {
+        self.number_format = Some(format.into());
+        self
+    }
+
+    /// Fixes the scale minimum.
+    #[must_use]
+    pub fn min(mut self, value: f64) -> Self {
+        self.min = Some(value);
+        self
+    }
+
+    /// Fixes the scale maximum.
+    #[must_use]
+    pub fn max(mut self, value: f64) -> Self {
+        self.max = Some(value);
+        self
+    }
+
+    /// Fixes the distance between major ticks.
+    #[must_use]
+    pub fn major_unit(mut self, value: f64) -> Self {
+        self.major_unit = Some(value);
+        self
+    }
+
+    /// Plots from high to low.
+    #[must_use]
+    pub fn reversed(mut self, reversed: bool) -> Self {
+        self.reversed = reversed;
+        self
+    }
+}
+
+/// Where a data label sits relative to its point or bar.
+///
+/// Which positions are legal depends on the chart kind; an illegal one is
+/// refused at render time with [`ChartError::InvalidDataLabelPosition`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DataLabelPosition {
+    /// Centred on the point or bar.
+    Center,
+    /// Inside the end of a bar or slice.
+    InsideEnd,
+    /// Inside the base of a bar.
+    InsideBase,
+    /// Outside the end of a bar or slice. Not allowed on stacked bars.
+    OutsideEnd,
+    /// Above a point (line, scatter, radar).
+    Above,
+    /// Below a point (line, scatter, radar).
+    Below,
+    /// Left of a point (line, scatter, radar).
+    Left,
+    /// Right of a point (line, scatter, radar).
+    Right,
+    /// Excel picks the best fit. Pie only.
+    BestFit,
+}
+
+impl DataLabelPosition {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            DataLabelPosition::Center => "ctr",
+            DataLabelPosition::InsideEnd => "inEnd",
+            DataLabelPosition::InsideBase => "inBase",
+            DataLabelPosition::OutsideEnd => "outEnd",
+            DataLabelPosition::Above => "t",
+            DataLabelPosition::Below => "b",
+            DataLabelPosition::Left => "l",
+            DataLabelPosition::Right => "r",
+            DataLabelPosition::BestFit => "bestFit",
+        }
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            DataLabelPosition::Center => "center",
+            DataLabelPosition::InsideEnd => "inside end",
+            DataLabelPosition::InsideBase => "inside base",
+            DataLabelPosition::OutsideEnd => "outside end",
+            DataLabelPosition::Above => "above",
+            DataLabelPosition::Below => "below",
+            DataLabelPosition::Left => "left",
+            DataLabelPosition::Right => "right",
+            DataLabelPosition::BestFit => "best fit",
+        }
+    }
+}
+
+/// Labels drawn on the plotted points of every series.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct DataLabels {
+    /// Show the value.
+    pub value: bool,
+    /// Show the category name.
+    pub category: bool,
+    /// Show the series name.
+    pub series: bool,
+    /// Show the percentage. Pie and doughnut only.
+    pub percent: bool,
+    /// Where to put them. `None` leaves it to Excel.
+    pub position: Option<DataLabelPosition>,
+    /// Number format for the labels, e.g. `"#,##0"`.
+    pub number_format: Option<String>,
+}
+
+impl DataLabels {
+    /// Labels showing each point's value.
+    pub fn values() -> Self {
+        Self {
+            value: true,
+            ..Self::default()
+        }
+    }
+
+    /// Also show the category name.
+    #[must_use]
+    pub fn with_category(mut self) -> Self {
+        self.category = true;
+        self
+    }
+
+    /// Also show the series name.
+    #[must_use]
+    pub fn with_series(mut self) -> Self {
+        self.series = true;
+        self
+    }
+
+    /// Also show the percentage (pie and doughnut).
+    #[must_use]
+    pub fn with_percent(mut self) -> Self {
+        self.percent = true;
+        self
+    }
+
+    /// Places the labels.
+    #[must_use]
+    pub fn at(mut self, position: DataLabelPosition) -> Self {
+        self.position = Some(position);
+        self
+    }
+
+    /// Sets the label number format.
+    #[must_use]
+    pub fn number_format(mut self, format: impl Into<String>) -> Self {
+        self.number_format = Some(format.into());
+        self
     }
 }
 
@@ -123,6 +474,9 @@ pub struct ChartSpec {
     pub(crate) value_axis: Axis,
     pub(crate) gap_width: u16,
     pub(crate) overlap: Option<i16>,
+    pub(crate) data_labels: Option<DataLabels>,
+    pub(crate) hole_size: u8,
+    pub(crate) first_slice_angle: u16,
 }
 
 impl ChartSpec {
@@ -138,6 +492,9 @@ impl ChartSpec {
             value_axis: Axis::default(),
             gap_width: 150,
             overlap: None,
+            data_labels: None,
+            hole_size: 50,
+            first_slice_angle: 0,
         }
     }
 
@@ -223,12 +580,39 @@ impl ChartSpec {
         self
     }
 
+    /// Draws data labels on every series.
+    #[must_use]
+    pub fn data_labels(mut self, labels: DataLabels) -> Self {
+        self.data_labels = Some(labels);
+        self
+    }
+
+    /// The doughnut's hole as a percentage of its diameter, 10-90. Doughnut
+    /// only; Excel's default is 50.
+    #[must_use]
+    pub fn hole_size(mut self, percent: u8) -> Self {
+        self.hole_size = percent;
+        self
+    }
+
+    /// Where the first pie or doughnut slice starts, in degrees clockwise from
+    /// twelve o'clock, 0-360.
+    #[must_use]
+    pub fn first_slice_angle(mut self, degrees: u16) -> Self {
+        self.first_slice_angle = degrees;
+        self
+    }
+
     /// Emits the chart part.
     ///
     /// # Errors
     ///
     /// [`ChartError::NoSeries`] if no series was added. A chart with no series
     /// opens, shows nothing, and gives no clue why.
+    ///
+    /// [`ChartError::InvalidColor`], [`ChartError::InvalidAxisRange`],
+    /// [`ChartError::InvalidDataLabelPosition`] and [`ChartError::OutOfRange`]
+    /// for settings Excel would repair away rather than honour.
     pub fn render(&self) -> Result<ChartPart, ChartError> {
         render::chart_space(self)
     }
@@ -255,11 +639,11 @@ mod tests {
     use super::*;
 
     fn one_series() -> Series {
-        Series {
-            name: SeriesName::Literal("Open".to_string()),
-            categories: Some("'Sheet1'!$A$3:$A$5".to_string()),
-            values: "'Sheet1'!$C$3:$C$5".to_string(),
-        }
+        Series::new(
+            SeriesName::Literal("Open".to_string()),
+            "'Sheet1'!$C$3:$C$5",
+        )
+        .with_categories("'Sheet1'!$A$3:$A$5")
     }
 
     fn rendered(spec: ChartSpec) -> String {
@@ -299,11 +683,12 @@ mod tests {
 
     #[test]
     fn a_referenced_series_name_is_a_string_reference() {
-        let out = rendered(ChartSpec::new(ChartKind::ColumnClustered).series(Series {
-            name: SeriesName::Reference("'Sheet1'!$C$1".to_string()),
-            categories: None,
-            values: "'Sheet1'!$C$3:$C$5".to_string(),
-        }));
+        let out = rendered(
+            ChartSpec::new(ChartKind::ColumnClustered).series(Series::new(
+                SeriesName::Reference("'Sheet1'!$C$1".to_string()),
+                "'Sheet1'!$C$3:$C$5",
+            )),
+        );
         assert!(
             out.contains("<c:tx><c:strRef><c:f>&#39;Sheet1&#39;!$C$1</c:f></c:strRef></c:tx>"),
             "{out}"
@@ -413,11 +798,7 @@ mod tests {
         let out = rendered(
             ChartSpec::new(ChartKind::Line)
                 .series(one_series())
-                .value_axis(Axis {
-                    title: Some("Revenue".to_string()),
-                    major_gridlines: true,
-                    visible: true,
-                }),
+                .value_axis(Axis::default().title("Revenue").gridlines(true)),
         );
         assert!(out.contains("<c:majorGridlines/>"), "{out}");
         assert!(out.contains("<a:t>Revenue</a:t>"), "{out}");
@@ -439,11 +820,10 @@ mod tests {
 
     #[test]
     fn a_series_without_categories_omits_the_category_element() {
-        let out = rendered(ChartSpec::new(ChartKind::Line).series(Series {
-            name: SeriesName::Literal("Open".to_string()),
-            categories: None,
-            values: "'Sheet1'!$C$3:$C$5".to_string(),
-        }));
+        let out = rendered(ChartSpec::new(ChartKind::Line).series(Series::new(
+            SeriesName::Literal("Open".to_string()),
+            "'Sheet1'!$C$3:$C$5",
+        )));
         assert!(!out.contains("<c:cat>"), "{out}");
         assert!(out.contains("<c:val>"), "{out}");
     }
