@@ -1569,3 +1569,73 @@ mod title_position {
         }
     }
 }
+
+// --- Axis line styling ---------------------------------------------------------------
+
+mod axis_line {
+    use super::*;
+
+    fn chart(category: Axis, value: Axis) -> Result<String, ChartError> {
+        ChartSpec::new(ChartKind::Line)
+            .category_axis(category)
+            .value_axis(value)
+            .series(series())
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+    }
+
+    #[test]
+    fn a_coloured_width_sits_after_the_tick_labels_and_before_the_text() {
+        let xml = chart(
+            Axis::default()
+                .line("8E0DD1")
+                .line_width(2.0)
+                .label_rotation(45),
+            Axis::default(),
+        )
+        .expect("a chart");
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<c:spPr><a:ln w="25400"><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></a:ln></c:spPr><c:txPr>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn no_line_writes_a_no_fill_outline() {
+        let xml = chart(Axis::default(), Axis::default().no_line()).expect("a chart");
+        assert!(
+            xml.contains(r#"<c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:crossAx"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_width_alone_keeps_excels_colour() {
+        let xml = chart(Axis::default().line_width(1.5), Axis::default()).expect("a chart");
+        assert!(
+            xml.contains(r#"<c:spPr><a:ln w="19050"/></c:spPr>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_unstyled_axis_has_no_shape_properties() {
+        let xml = chart(Axis::default(), Axis::default()).expect("a chart");
+        assert!(!xml.contains("<c:spPr>"), "{xml}");
+    }
+
+    #[test]
+    fn a_bad_colour_or_width_is_refused() {
+        assert!(matches!(
+            chart(Axis::default().line("red"), Axis::default()),
+            Err(ChartError::InvalidColor(_))
+        ));
+        for bad in [-1.0, f64::NAN, 5000.0] {
+            assert!(
+                chart(Axis::default(), Axis::default().line_width(bad)).is_err(),
+                "{bad}"
+            );
+        }
+    }
+}

@@ -1030,6 +1030,11 @@ pub struct Axis {
     pub title_style: Option<TextStyle>,
     /// Manual position of the axis title. Needs `title`.
     pub title_position: Option<Position>,
+    /// Colour of the axis line. `None` leaves Excel's default;
+    /// [`Paint::None`] hides the line.
+    pub line: Option<Paint>,
+    /// Width of the axis line in points.
+    pub line_width_pt: Option<f64>,
     /// Font for the tick labels.
     pub label_style: Option<TextStyle>,
     /// Cross the other axis at its maximum instead of at zero. On a horizontal
@@ -1080,6 +1085,8 @@ impl Default for Axis {
             label_rotation: None,
             title_style: None,
             title_position: None,
+            line: None,
+            line_width_pt: None,
             label_style: None,
             crosses_max: false,
             crosses_at: None,
@@ -1203,6 +1210,27 @@ impl Axis {
     #[must_use]
     pub fn title_style(mut self, style: TextStyle) -> Self {
         self.title_style = Some(style);
+        self
+    }
+
+    /// Draws the axis line in a solid colour, six hex digits without `#`.
+    #[must_use]
+    pub fn line(mut self, rgb: impl Into<String>) -> Self {
+        self.line = Some(Paint::Color(rgb.into()));
+        self
+    }
+
+    /// Hides the axis line, leaving tick labels and gridlines.
+    #[must_use]
+    pub fn no_line(mut self) -> Self {
+        self.line = Some(Paint::None);
+        self
+    }
+
+    /// Sets the axis line width in points.
+    #[must_use]
+    pub fn line_width(mut self, points: f64) -> Self {
+        self.line_width_pt = Some(points);
         self
     }
 

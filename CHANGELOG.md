@@ -30,6 +30,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Axis line styling: `Axis::line`, `no_line` and `line_width` write the axis
+  `<c:spPr>` outline (colour, hidden, width). Bad colours and widths are
+  refused.
 - Manual title placement: `ChartSpec::title_position` and
   `Axis::title_position` (`Position`, fractions of the chart) write a
   `<c:layout>` inside the title. Refused with no title to place, or for a

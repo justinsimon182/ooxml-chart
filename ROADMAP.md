@@ -44,7 +44,7 @@ does not read, write, or zip `.xlsx` packages.
 | Date axis | Done — `Axis::dates` |
 | Date axis major and minor time units | Done — `Axis::date_major`, `date_minor`; never finer than the base unit |
 | Custom crossing value | Done — `Axis::crosses_at`, in the other axis's units |
-| Axis line styling | **Open** |
+| Axis line styling | Done (`Axis::line`) |
 | Display units (thousands, millions) | Done (`Axis::display_units`; custom caption text is Open) |
 
 ## Text, colour and layout
@@ -83,7 +83,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 53 in all) validates against the
+date axis, and one drawing per anchor type â€” 54 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
