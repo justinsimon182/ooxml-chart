@@ -13,8 +13,8 @@ use crate::error::ChartError;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DateUnit,
     DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
-    MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels,
-    Trendline, TrendlineKind,
+    MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
+    TickLabels, Trendline, TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -146,6 +146,27 @@ fn layout_xml(layout: Option<&Layout>, plot_area: bool) -> String {
     )
 }
 
+/// A `<c:layout>` for a title: x and y only, since a title sizes itself.
+fn title_layout_xml(position: Option<Position>) -> String {
+    match position {
+        Some(Position { x, y }) => format!(
+            r#"<c:layout><c:manualLayout><c:xMode val="edge"/><c:yMode val="edge"/><c:x val="{x}"/><c:y val="{y}"/></c:manualLayout></c:layout>"#
+        ),
+        None => String::new(),
+    }
+}
+
+fn check_position(position: &Position) -> Result<(), ChartError> {
+    let invalid = |reason| Err(ChartError::InvalidLayout { reason });
+    if !position.x.is_finite() || !position.y.is_finite() {
+        return invalid("every number must be finite");
+    }
+    if !(0.0..=1.0).contains(&position.x) || !(0.0..=1.0).contains(&position.y) {
+        return invalid("x and y must be between 0 and 1");
+    }
+    Ok(())
+}
+
 fn check_layout(layout: &Layout) -> Result<(), ChartError> {
     let invalid = |reason| Err(ChartError::InvalidLayout { reason });
     let numbers = [layout.x, layout.y, layout.width, layout.height];
@@ -188,7 +209,11 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     out.push_str(HEADER);
     out.push_str("<c:chart>");
     if let Some(title) = &spec.title {
-        out.push_str(&title_xml(title, spec.title_style.as_ref()));
+        out.push_str(&title_xml(
+            title,
+            spec.title_style.as_ref(),
+            spec.title_position,
+        ));
     }
     out.push_str("<c:plotArea>");
     out.push_str(&layout_xml(spec.plot_area_layout.as_ref(), true));
@@ -260,6 +285,12 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
         .flatten()
     {
         check_layout(layout)?;
+    }
+    if let Some(position) = &spec.title_position {
+        if spec.title.is_none() {
+            return unsupported("a title position with no title".to_string());
+        }
+        check_position(position)?;
     }
     if spec.legend_layout.is_some() && spec.legend.code().is_none() {
         return unsupported("a legend layout with no legend".to_string());
@@ -678,6 +709,14 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
     }
     if let Some(degrees) = axis.label_rotation {
         check_range("label rotation", i64::from(degrees), -90, 90)?;
+    }
+    if let Some(position) = &axis.title_position {
+        if axis.title.is_none() {
+            return Err(ChartError::Unsupported {
+                what: "an axis title position with no axis title".to_string(),
+            });
+        }
+        check_position(position)?;
     }
     for style in [&axis.title_style, &axis.label_style].into_iter().flatten() {
         check_text_style(style)?;
@@ -1338,20 +1377,21 @@ fn sp_pr_xml(style: &AreaStyle) -> String {
     format!("<c:spPr>{fill}{line}</c:spPr>")
 }
 
-fn rich_title(text: &str, style: Option<&TextStyle>) -> String {
+fn rich_title(text: &str, style: Option<&TextStyle>, position: Option<Position>) -> String {
     let run_props = style
         .map(|style| run_props("rPr", r#" lang="en-US""#, style))
         .unwrap_or_default();
     format!(
-        "<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r>{run_props}<a:t>{}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/>",
-        escape(text)
+        "<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r>{run_props}<a:t>{}</a:t></a:r></a:p></c:rich></c:tx>{}<c:overlay val=\"0\"/>",
+        escape(text),
+        title_layout_xml(position)
     )
 }
 
-fn title_xml(text: &str, style: Option<&TextStyle>) -> String {
+fn title_xml(text: &str, style: Option<&TextStyle>, position: Option<Position>) -> String {
     format!(
         r#"<c:title>{}</c:title><c:autoTitleDeleted val="0"/>"#,
-        rich_title(text, style)
+        rich_title(text, style, position)
     )
 }
 
@@ -1498,7 +1538,7 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
         .map(|text| {
             format!(
                 "<c:title>{}</c:title>",
-                rich_title(text, axis.title_style.as_ref())
+                rich_title(text, axis.title_style.as_ref(), axis.title_position)
             )
         })
         .unwrap_or_default();

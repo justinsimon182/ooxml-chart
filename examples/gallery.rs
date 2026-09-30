@@ -6,7 +6,8 @@
 use ooxml_chart::{
     AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, DisplayUnit,
     ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition, MarkerSymbol, Plot,
-    PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    PointFormat, PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, Trendline,
+    TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -382,6 +383,18 @@ fn main() {
                 .category_axis(Axis::default().display_units(DisplayUnit::Custom(250.0)))
                 .value_axis(Axis::default().display_units(DisplayUnit::Millions))
                 .series(series("North", "B", "0090B2")),
+        ),
+        (
+            "title_position",
+            ChartSpec::new(ChartKind::Line)
+                .title("Placed title")
+                .title_position(Position::new(0.6, 0.02))
+                .value_axis(
+                    Axis::default()
+                        .title("Units")
+                        .title_position(Position::new(0.02, 0.4)),
+                )
+                .series(series("North", "B", "8E0DD1")),
         ),
         (
             "date_axis",

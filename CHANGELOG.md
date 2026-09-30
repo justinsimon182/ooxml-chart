@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Manual title placement: `ChartSpec::title_position` and
+  `Axis::title_position` (`Position`, fractions of the chart) write a
+  `<c:layout>` inside the title. Refused with no title to place, or for a
+  position outside 0 to 1.
 - Display units: `Axis::display_units` (`DisplayUnit`, built-in or custom
   divisor) and `display_units_label` write `<c:dispUnits>` on value axes and on
   a scatter or bubble x axis. Refused on other category axes, for a

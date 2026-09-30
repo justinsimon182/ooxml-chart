@@ -1470,3 +1470,102 @@ mod display_units {
         );
     }
 }
+
+// --- Title positions ---------------------------------------------------------------
+
+mod title_position {
+    use super::*;
+    use ooxml_chart::Position;
+
+    const LAYOUT: &str = r#"<c:layout><c:manualLayout><c:xMode val="edge"/><c:yMode val="edge"/><c:x val="0.25"/><c:y val="0.05"/></c:manualLayout></c:layout>"#;
+
+    #[test]
+    fn a_chart_title_position_sits_between_the_text_and_overlay() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .title("Sales")
+                .title_position(Position::new(0.25, 0.05))
+                .series(series()),
+        );
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(&format!("</c:tx>{LAYOUT}<c:overlay val=\"0\"/></c:title>")),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_axis_title_position_is_written_the_same_way() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .value_axis(
+                    Axis::default()
+                        .title("Units")
+                        .title_position(Position::new(0.25, 0.05)),
+                )
+                .series(series()),
+        );
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(&format!("</c:tx>{LAYOUT}<c:overlay val=\"0\"/></c:title>")),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn without_a_position_titles_carry_no_layout() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .title("Sales")
+                .value_axis(Axis::default().title("Units"))
+                .series(series()),
+        );
+        assert!(!xml.contains("<c:manualLayout>"), "{xml}");
+    }
+
+    #[test]
+    fn a_position_with_no_title_is_refused() {
+        let chart = ChartSpec::new(ChartKind::Line)
+            .title_position(Position::new(0.1, 0.1))
+            .series(series())
+            .render();
+        assert!(matches!(chart, Err(ChartError::Unsupported { .. })));
+        let axis = ChartSpec::new(ChartKind::Line)
+            .category_axis(Axis::default().title_position(Position::new(0.1, 0.1)))
+            .series(series())
+            .render();
+        assert!(matches!(axis, Err(ChartError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn an_out_of_range_position_is_refused() {
+        for (x, y) in [
+            (-0.1, 0.5),
+            (0.5, 1.1),
+            (f64::NAN, 0.5),
+            (0.5, f64::INFINITY),
+        ] {
+            let chart = ChartSpec::new(ChartKind::Line)
+                .title("Sales")
+                .title_position(Position::new(x, y))
+                .series(series())
+                .render();
+            assert!(
+                matches!(chart, Err(ChartError::InvalidLayout { .. })),
+                "{x},{y}: {chart:?}"
+            );
+            let axis = ChartSpec::new(ChartKind::Line)
+                .value_axis(
+                    Axis::default()
+                        .title("U")
+                        .title_position(Position::new(x, y)),
+                )
+                .series(series())
+                .render();
+            assert!(
+                matches!(axis, Err(ChartError::InvalidLayout { .. })),
+                "{x},{y}: {axis:?}"
+            );
+        }
+    }
+}
