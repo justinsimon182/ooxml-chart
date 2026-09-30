@@ -357,6 +357,14 @@ fn main() {
                 .series(series("Share", "B", "8E0DD1")),
         ),
         (
+            "crosses_at",
+            ChartSpec::new(ChartKind::LineMarkers)
+                .title("Crosses at")
+                .category_axis(Axis::default().crosses_at(5.0))
+                .value_axis(Axis::default().crosses_at(2.0))
+                .series(series("North", "B", "8E0DD1")),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")

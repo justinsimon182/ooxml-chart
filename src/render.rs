@@ -312,6 +312,17 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
         }
         check_axis(&spec.category_axis)?;
         check_axis(&spec.value_axis)?;
+        // A logarithmic axis has no zero or negative positions to cross at.
+        for (crossing, other) in [
+            (&spec.category_axis, &spec.value_axis),
+            (&spec.value_axis, &spec.category_axis),
+        ] {
+            if other.log_base.is_some() && crossing.crosses_at.is_some_and(|at| at <= 0.0) {
+                return Err(ChartError::InvalidAxisRange {
+                    reason: "a crossing value must be positive on a logarithmic axis",
+                });
+            }
+        }
     }
 
     // Bar geometry and round-chart settings.
@@ -636,6 +647,14 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
         return reason("a tick unit is not positive");
     }
     check_date_ticks(axis)?;
+    if let Some(at) = axis.crosses_at {
+        if !at.is_finite() {
+            return reason("a crossing value is not finite");
+        }
+        if axis.crosses_max {
+            return reason("an axis cannot cross at both a value and the maximum");
+        }
+    }
     if let Some(base) = axis.log_base {
         check_range("log base", i64::from(base), 2, 1000)?;
         if axis.min.is_some_and(|min| min <= 0.0) {
@@ -1388,7 +1407,7 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
         // The right-hand value axis crosses the (hidden) secondary category
         // axis at its far end, which is what puts it on the right.
         let mut value_axis = spec.secondary_value_axis.clone();
-        value_axis.crosses_max = true;
+        value_axis.crosses_max = value_axis.crosses_at.is_none();
         out.push_str(&axis_xml(
             &AxisPlacement {
                 kind: AxisKind::Value,
@@ -1495,10 +1514,10 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
     } else {
         String::new()
     };
-    let crosses = if axis.crosses_max {
-        r#"<c:crosses val="max"/>"#
-    } else {
-        ""
+    let crosses = match axis.crosses_at {
+        Some(value) => format!(r#"<c:crossesAt val="{value}"/>"#),
+        None if axis.crosses_max => r#"<c:crosses val="max"/>"#.to_string(),
+        None => String::new(),
     };
     let tail = match kind {
         AxisKind::Category => String::new(),

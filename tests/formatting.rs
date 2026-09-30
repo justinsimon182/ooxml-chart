@@ -1254,3 +1254,97 @@ mod date_ticks {
         assert!(why.contains("positive"), "{why}");
     }
 }
+
+// --- crossesAt --------------------------------------------------------------------
+
+mod crosses_at {
+    use super::*;
+
+    fn chart(category: Axis, value: Axis) -> Result<String, ChartError> {
+        ChartSpec::new(ChartKind::ColumnClustered)
+            .category_axis(category)
+            .value_axis(value)
+            .series(series())
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+    }
+
+    fn axis_xml<'a>(xml: &'a str, tag: &str) -> &'a str {
+        let start = xml.find(&format!("<c:{tag}>")).expect("axis");
+        let end = xml[start..].find(&format!("</c:{tag}>")).expect("axis end");
+        &xml[start..start + end]
+    }
+
+    #[test]
+    fn a_category_axis_crossing_at_a_value_writes_crosses_at_after_crossax() {
+        let xml = chart(Axis::default().crosses_at(50.0), Axis::default()).expect("a chart");
+        assert_well_formed(&xml);
+        let cat = axis_xml(&xml, "catAx");
+        assert!(cat.ends_with(r#"<c:crossesAt val="50"/>"#), "{cat}");
+        assert!(
+            cat.contains(r#"<c:crossAx val="#)
+                && cat.find("<c:crossAx").unwrap() < cat.find("<c:crossesAt").unwrap(),
+            "{cat}"
+        );
+        assert!(!axis_xml(&xml, "valAx").contains("crossesAt"), "{xml}");
+    }
+
+    #[test]
+    fn a_fractional_and_a_negative_value_are_written_as_given() {
+        let xml = chart(Axis::default(), Axis::default().crosses_at(-2.5)).expect("a chart");
+        assert!(
+            axis_xml(&xml, "valAx").contains(r#"<c:crossesAt val="-2.5"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn crosses_at_replaces_crosses_max_on_the_secondary_axis() {
+        let xml = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series())
+            .plot(
+                Plot::new(ChartKind::Line)
+                    .series(series())
+                    .on_secondary_axis(),
+            )
+            .secondary_value_axis(Axis::default().crosses_at(3.0))
+            .render()
+            .map(|part| String::from_utf8(part.xml).expect("UTF-8"))
+            .expect("a chart");
+        assert!(xml.contains(r#"<c:crossesAt val="3"/>"#), "{xml}");
+        assert_eq!(xml.matches(r#"<c:crosses val="max"/>"#).count(), 0, "{xml}");
+    }
+
+    #[test]
+    fn an_axis_cannot_cross_at_a_value_and_the_maximum() {
+        let error = chart(
+            Axis::default().crosses_at(1.0).crosses_max(true),
+            Axis::default(),
+        );
+        assert!(
+            matches!(error, Err(ChartError::InvalidAxisRange { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_non_finite_crossing_is_refused() {
+        let error = chart(Axis::default(), Axis::default().crosses_at(f64::NAN));
+        assert!(
+            matches!(error, Err(ChartError::InvalidAxisRange { .. })),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn crossing_a_log_axis_at_zero_or_below_is_refused_but_above_is_fine() {
+        let log = || Axis::default().log(10).min(1.0);
+        let error = chart(Axis::default().crosses_at(0.0), log());
+        assert!(
+            matches!(error, Err(ChartError::InvalidAxisRange { .. })),
+            "{error:?}"
+        );
+        let xml = chart(Axis::default().crosses_at(10.0), log()).expect("a chart");
+        assert!(xml.contains(r#"<c:crossesAt val="10"/>"#), "{xml}");
+    }
+}

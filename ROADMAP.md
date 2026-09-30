@@ -43,7 +43,8 @@ does not read, write, or zip `.xlsx` packages.
 | Tick marks, tick label position, label rotation, minor gridlines | Done |
 | Date axis | Done — `Axis::dates` |
 | Date axis major and minor time units | Done — `Axis::date_major`, `date_minor`; never finer than the base unit |
-| Axis line styling, custom crossing value (`crossesAt`) | **Open** |
+| Custom crossing value | Done — `Axis::crosses_at`, in the other axis's units |
+| Axis line styling | **Open** |
 | Display units (thousands, millions) | **Open** |
 
 ## Text, colour and layout
@@ -82,7 +83,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 49 in all) validates against the
+date axis, and one drawing per anchor type â€” 50 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
