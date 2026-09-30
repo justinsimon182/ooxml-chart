@@ -5,8 +5,8 @@
 
 use ooxml_chart::{
     AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, LegendPosition,
-    MarkerSymbol, Plot, PointFormat, Series, SeriesName, TextStyle, TickLabels, Trendline,
-    TrendlineKind,
+    MarkerSymbol, Plot, PointFormat, PointLabel, Series, SeriesName, TextStyle, TickLabels,
+    Trendline, TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -262,6 +262,43 @@ fn main() {
                             .show_equation()
                             .forward(1.0),
                     ),
+                ),
+        ),
+        (
+            "point_overrides_line",
+            ChartSpec::new(ChartKind::LineMarkers)
+                .title("Point overrides")
+                .data_labels(DataLabels::values().at(DataLabelPosition::Above))
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_marker(MarkerSymbol::Circle, 6)
+                        .with_point(
+                            2,
+                            PointFormat::new()
+                                .marker(MarkerSymbol::Diamond, 11)
+                                .color("28EAE4"),
+                        )
+                        .with_point_label(0, PointLabel::hidden())
+                        .with_point_label(
+                            2,
+                            PointLabel::text("Peak")
+                                .at(DataLabelPosition::Right)
+                                .style(TextStyle::new().bold(true)),
+                        ),
+                ),
+        ),
+        (
+            "point_overrides_column",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Point overrides")
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_point(1, PointFormat::new().color("0090B2"))
+                        .with_point_label(
+                            1,
+                            PointLabel::text("Best").at(DataLabelPosition::OutsideEnd),
+                        )
+                        .with_trendline(Trendline::new(TrendlineKind::Linear)),
                 ),
         ),
         (

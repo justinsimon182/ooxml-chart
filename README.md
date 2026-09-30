@@ -132,8 +132,9 @@ a label position the chart kind does not allow â€” are refused with a typed
 `Series::new` / `Axis::default()` and the builder methods.
 
 Beyond the above: `TextStyle` for fonts, `AreaStyle` for chart and plot area
-fill and border, `PointFormat` for one slice or bar, `Trendline`, log and date
-axes, tick and label options.
+fill and border, `PointFormat` for one slice, bar or marker, `PointLabel` to
+hide, reword, move or restyle one data label, `Trendline`, log and date axes,
+tick and label options.
 
 ## Combination charts
 

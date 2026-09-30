@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Per-point overrides: `PointFormat::marker` restyles one marker, and its
+  `color` now recolours a marker on line, scatter and radar series.
+  `PointLabel` and `Series::with_point_label` hide, reword, move or restyle one
+  data label; the rest of the series keeps the chart-wide labels.
 - Template mode: `TemplateChart::with_axis_title` and `with_series_name` swap an
   axis title or a literal series name by document-order index
   (`axis_count`, `series_count`). New errors `TemplateIndexOutOfRange`,
