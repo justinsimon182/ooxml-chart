@@ -57,9 +57,9 @@ pub use metrics::{two_cell_anchor, CellAnchor, RowMetrics, TwoCellAnchor, Unknow
 pub use spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
     DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Gradient,
-    GradientStop, Layout, LegendPosition, MarkerSymbol, Paint, Pattern, PatternKind, Plot,
-    PointFormat, PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, TickMark,
-    Trendline, TrendlineKind,
+    GradientStop, LabelField, LabelPart, Layout, LegendPosition, MarkerSymbol, Paint, Pattern,
+    PatternKind, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
+    TickLabels, TickMark, Trendline, TrendlineKind,
 };
 pub use template::TemplateChart;
 

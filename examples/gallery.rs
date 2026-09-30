@@ -9,7 +9,7 @@ use ooxml_chart::{
     MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
     TickLabels, Trendline, TrendlineKind,
 };
-use ooxml_chart::{Gradient, Paint, Pattern, PatternKind};
+use ooxml_chart::{Gradient, LabelField, LabelPart, Paint, Pattern, PatternKind};
 use std::{env, fs, path::PathBuf};
 
 fn main() {
@@ -495,6 +495,32 @@ fn main() {
                     .with_categories("'S'!$A$2:$A$5")
                     .with_cached_name("North"),
             ),
+        ),
+        (
+            "label_fields_pie",
+            ChartSpec::new(ChartKind::Pie).title("Label fields").series(
+                series("Share", "B", "8E0DD1").with_point_label(
+                    0,
+                    PointLabel::parts([
+                        LabelPart::field(LabelField::CategoryName),
+                        LabelPart::text(": "),
+                        LabelPart::field(LabelField::Percentage),
+                    ]),
+                ),
+            ),
+        ),
+        (
+            "label_fields_column",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Label fields")
+                .series(series("North", "B", "8E0DD1").with_point_label(
+                    1,
+                    PointLabel::parts([
+                        LabelPart::field(LabelField::SeriesName),
+                        LabelPart::text(" = "),
+                        LabelPart::field(LabelField::Value),
+                    ]),
+                )),
         ),
         (
             "date_axis",

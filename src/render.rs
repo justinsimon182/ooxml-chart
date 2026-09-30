@@ -13,9 +13,9 @@ use crate::error::ChartError;
 use crate::reference;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
-    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Layout,
-    MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
-    TickLabels, Trendline, TrendlineKind,
+    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
+    LabelField, LabelPart, Layout, MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Position,
+    Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -520,6 +520,26 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
         if label.hidden && label.text.is_some() {
             return unsupported("a data label that is both hidden and has text".to_string());
         }
+        if !label.parts.is_empty() {
+            if label.hidden || label.text.is_some() {
+                return unsupported(
+                    "a data label with parts that is also hidden or has text".to_string(),
+                );
+            }
+            for part in &label.parts {
+                match part {
+                    LabelPart::Field(LabelField::Percentage)
+                        if !matches!(plot.family, Family::Pie | Family::Doughnut) =>
+                    {
+                        return unsupported(format!("a percentage field on {:?}", plot.kind));
+                    }
+                    LabelPart::Field(LabelField::CellRange) if series.label_range.is_none() => {
+                        return unsupported("a cell-range field with no label range".to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
         if let Some(style) = &label.style {
             check_text_style(style)?;
         }
@@ -1015,6 +1035,15 @@ fn cells_ext_xml(labels: &DataLabels) -> String {
     }
 }
 
+/// The extension a label with fields needs: an (empty) field table, then the
+/// "Value From Cells" switch.
+fn fields_ext_xml(cells: bool) -> String {
+    format!(
+        r#"<c:extLst><c:ext uri="{{CE6537A1-D6FC-4f65-9D91-7224C49458BB}}" xmlns:c15="{C15}"><c15:dlblFieldTable/><c15:showDataLabelsRange val="{}"/></c:ext></c:extLst>"#,
+        i32::from(cells)
+    )
+}
+
 /// A series' label range, the last thing in a `<c:ser>`.
 fn label_range_xml(series: &Series) -> String {
     let Some(reference) = &series.label_range else {
@@ -1097,7 +1126,11 @@ fn label_flags_xml(labels: &DataLabels) -> String {
 /// outright, so the group after the `<c:dLbl>` entries repeats the chart-wide
 /// settings — or, with none, switches labels off — for the points that are not
 /// overridden.
-fn series_labels_xml(series: &Series, chart_wide: Option<&DataLabels>) -> String {
+fn series_labels_xml(
+    series_index: usize,
+    series: &Series,
+    chart_wide: Option<&DataLabels>,
+) -> String {
     if series.point_labels.is_empty() {
         return String::new();
     }
@@ -1108,7 +1141,7 @@ fn series_labels_xml(series: &Series, chart_wide: Option<&DataLabels>) -> String
     let inherited = chart_wide.cloned().unwrap_or_else(DataLabels::values);
     let entries: String = overrides
         .into_iter()
-        .map(|(index, label)| point_label_xml(*index, label, &inherited))
+        .map(|(index, label)| point_label_xml(series_index, *index, label, &inherited))
         .collect();
     let group = chart_wide
         .map(|labels| {
@@ -1123,11 +1156,49 @@ fn series_labels_xml(series: &Series, chart_wide: Option<&DataLabels>) -> String
     format!("<c:dLbls>{entries}{group}</c:dLbls>")
 }
 
-fn point_label_xml(index: usize, label: &PointLabel, inherited: &DataLabels) -> String {
+/// A GUID for a field, unique within the chart and stable between renders.
+fn field_id(series: usize, point: usize, part: usize) -> String {
+    format!("{{{series:08X}-{point:04X}-4000-8000-{part:012X}}}")
+}
+
+fn point_label_xml(
+    series_index: usize,
+    index: usize,
+    label: &PointLabel,
+    inherited: &DataLabels,
+) -> String {
     if label.hidden {
         return format!(r#"<c:dLbl><c:idx val="{index}"/><c:delete val="1"/></c:dLbl>"#);
     }
     let style = label.style.as_ref().or(inherited.style.as_ref());
+    let custom = label.text.is_some() || !label.parts.is_empty();
+    let has_fields = label
+        .parts
+        .iter()
+        .any(|part| matches!(part, LabelPart::Field(_)));
+    let mixed = if label.parts.is_empty() {
+        String::new()
+    } else {
+        let props = style
+            .map(|style| run_props("rPr", r#" lang="en-US""#, style))
+            .unwrap_or_else(|| r#"<a:rPr lang="en-US"/>"#.to_string());
+        let runs: String = label
+            .parts
+            .iter()
+            .enumerate()
+            .map(|(part, item)| match item {
+                LabelPart::Text(text) => format!("<a:r>{props}<a:t>{}</a:t></a:r>", escape(text)),
+                LabelPart::Field(field) => {
+                    let (code, placeholder) = field.code();
+                    format!(
+                        r#"<a:fld id="{}" type="{code}">{props}<a:pPr/><a:t>{placeholder}</a:t></a:fld>"#,
+                        field_id(series_index, index, part)
+                    )
+                }
+            })
+            .collect();
+        format!("<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p>{runs}</a:p></c:rich></c:tx>")
+    };
     let text = label
         .text
         .as_ref()
@@ -1140,19 +1211,19 @@ fn point_label_xml(index: usize, label: &PointLabel, inherited: &DataLabels) -> 
                 escape(text)
             )
         })
-        .unwrap_or_default();
+        .unwrap_or(mixed);
     // Custom text carries its font on the run; otherwise it is the label's
     // default text properties.
     let body = DataLabels {
         position: label.position.or(inherited.position),
-        style: style.filter(|_| label.text.is_none()).cloned(),
+        style: style.filter(|_| !custom).cloned(),
         ..inherited.clone()
     };
     let flags_and_format = {
         let group = label_group_xml(&body);
         // Custom text is shown whatever the flags say, but Excel writes at
         // least the value flag alongside it.
-        if label.text.is_some() && !(body.value || body.category || body.series || body.percent) {
+        if custom && !(body.value || body.category || body.series || body.percent) {
             label_group_xml(&DataLabels {
                 value: true,
                 ..body
@@ -1163,7 +1234,11 @@ fn point_label_xml(index: usize, label: &PointLabel, inherited: &DataLabels) -> 
     };
     format!(
         r#"<c:dLbl><c:idx val="{index}"/>{text}{flags_and_format}{}</c:dLbl>"#,
-        cells_ext_xml(inherited)
+        if has_fields {
+            fields_ext_xml(inherited.cells)
+        } else {
+            cells_ext_xml(inherited)
+        }
     )
 }
 
@@ -1200,7 +1275,7 @@ fn series_xml(
     let points = format!(
         "{}{}",
         points_xml(plot, series),
-        series_labels_xml(series, chart_wide_labels)
+        series_labels_xml(index, series, chart_wide_labels)
     );
     let trendlines: String = series.trendlines.iter().map(trendline_xml).collect();
     let error_bars = error_bars_xml(plot, series);

@@ -19,6 +19,18 @@ CHART = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 DRAWING = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 
 
+def flatten_extensions(doc):
+    """Keep only the first child of each `c:ext`.
+
+    The schema lets an extension hold one foreign element, but Excel writes two
+    in a data label (`c15:dlblFieldTable` then `c15:showDataLabelsRange`). The
+    extra children are not schema content, so they are dropped before checking.
+    """
+    for ext in doc.iter("{%s}ext" % CHART):
+        for extra in list(ext)[1:]:
+            ext.remove(extra)
+
+
 def main(parts_dir, schema_dir):
     schemas = {
         "{%s}chartSpace" % CHART: "dml-chart.xsd",
@@ -28,6 +40,7 @@ def main(parts_dir, schema_dir):
     invalid = checked = 0
     for path in sorted(glob.glob(os.path.join(parts_dir, "*.xml"))):
         doc = etree.parse(path)
+        flatten_extensions(doc)
         xsd = schemas.get(doc.getroot().tag)
         if xsd is None:
             print("SKIP   ", os.path.basename(path), doc.getroot().tag)
