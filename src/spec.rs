@@ -618,6 +618,56 @@ impl ErrorBars {
     }
 }
 
+/// A manual position and size for the plot area or the legend.
+///
+/// Every number is a fraction of the whole chart, measured from its top-left
+/// corner: `x` and `y` place the rectangle's top-left corner, `width` and
+/// `height` size it. `Layout::new(0.1, 0.15, 0.7, 0.65)` leaves a tenth of the
+/// chart free on the left and 15% on top.
+///
+/// Set with [`ChartSpec::plot_area_layout`] or [`ChartSpec::legend_layout`].
+/// Without one Excel lays the element out itself.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Layout {
+    /// Left edge, from 0 to 1.
+    pub x: f64,
+    /// Top edge, from 0 to 1.
+    pub y: f64,
+    /// Width, above 0 and at most 1.
+    pub width: f64,
+    /// Height, above 0 and at most 1.
+    pub height: f64,
+    /// Plot area only: size the rectangle *inside* the axes, leaving the tick
+    /// labels and axis titles outside it (on by default, as Excel writes it).
+    /// Off, the rectangle includes them. Ignored for a legend.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub inner: bool,
+}
+
+impl Layout {
+    /// A layout at (`x`, `y`) of size `width` by `height`, all as fractions of
+    /// the chart. Checked at render time.
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            inner: true,
+        }
+    }
+
+    /// For a plot area: include tick labels and axis titles in the rectangle.
+    #[must_use]
+    pub fn outer(mut self) -> Self {
+        self.inner = false;
+        self
+    }
+}
+
 /// Font settings for a piece of chart text.
 ///
 /// Unset fields inherit from the chart's text style, then from Excel.
@@ -1367,6 +1417,10 @@ pub struct ChartSpec {
     pub(crate) chart_area: Option<AreaStyle>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) plot_area: Option<AreaStyle>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) plot_area_layout: Option<Layout>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) legend_layout: Option<Layout>,
     #[cfg_attr(feature = "serde", serde(default, rename = "plots"))]
     pub(crate) extra_plots: Vec<Plot>,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -1397,6 +1451,8 @@ impl ChartSpec {
             legend_style: None,
             chart_area: None,
             plot_area: None,
+            plot_area_layout: None,
+            legend_layout: None,
             extra_plots: Vec::new(),
             secondary_value_axis: Axis::default(),
             bubble_scale: 100,
@@ -1525,6 +1581,22 @@ impl ChartSpec {
     #[must_use]
     pub fn plot_area(mut self, style: AreaStyle) -> Self {
         self.plot_area = Some(style);
+        self
+    }
+
+    /// Places and sizes the plot area by hand; see [`Layout`].
+    #[must_use]
+    pub fn plot_area_layout(mut self, layout: Layout) -> Self {
+        self.plot_area_layout = Some(layout);
+        self
+    }
+
+    /// Places and sizes the legend by hand; see [`Layout`]. The legend must
+    /// be shown: combining this with [`LegendPosition::None`] is refused at
+    /// render time.
+    #[must_use]
+    pub fn legend_layout(mut self, layout: Layout) -> Self {
+        self.legend_layout = Some(layout);
         self
     }
 

@@ -5,7 +5,7 @@
 
 use ooxml_chart::{
     AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, ErrorAmount,
-    ErrorBarSide, ErrorBars, ErrorValues, LegendPosition, MarkerSymbol, Plot, PointFormat,
+    ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition, MarkerSymbol, Plot, PointFormat,
     PointLabel, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use std::{env, fs, path::PathBuf};
@@ -338,6 +338,23 @@ fn main() {
                     series("North", "B", "104991")
                         .with_error_bars(ErrorBars::new(ErrorAmount::Fixed(1.5))),
                 ),
+        ),
+        (
+            "manual_layout",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Manual layout")
+                .legend(LegendPosition::Right)
+                .plot_area_layout(Layout::new(0.08, 0.15, 0.65, 0.7))
+                .legend_layout(Layout::new(0.78, 0.35, 0.18, 0.25))
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "manual_layout_pie_outer",
+            ChartSpec::new(ChartKind::Pie)
+                .title("Manual layout")
+                .plot_area_layout(Layout::new(0.1, 0.15, 0.6, 0.8).outer())
+                .series(series("Share", "B", "8E0DD1")),
         ),
         (
             "date_axis",

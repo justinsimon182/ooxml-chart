@@ -218,6 +218,14 @@ pub enum ChartError {
         reason: &'static str,
     },
 
+    /// A manual [`Layout`](crate::Layout) that does not fit inside the chart:
+    /// a number that is not finite, or a rectangle reaching outside it.
+    #[error("the layout is invalid: {reason}")]
+    InvalidLayout {
+        /// What is wrong with it.
+        reason: &'static str,
+    },
+
     /// A data label position the chart kind does not allow.
     ///
     /// Excel does not ignore an illegal `<c:dLblPos>` â€” it reports the file as
