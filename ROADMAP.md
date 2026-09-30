@@ -74,7 +74,7 @@ does not read, write, or zip `.xlsx` packages.
 | Declare a chart as JSON, TOML or YAML | Done — `serde` feature, unknown fields refused |
 | Illegal XML 1.0 characters stripped from text | Done |
 | CI: fmt, clippy, tests, docs, MSRV | Done — `.github/workflows/ci.yml` |
-| Template mode: swap axis titles and series names | **Open** |
+| Template mode: swap axis titles and series names | Done — `with_axis_title`, `with_series_name`; literal names and plain-text titles only |
 | Validate reference syntax (`Sheet!$A$1:$B$2`) | **Open** — must not reject valid quoting |
 | Round-trip check against a real Excel install | **Open** — no Excel in CI; see below |
 

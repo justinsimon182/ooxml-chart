@@ -67,6 +67,45 @@ pub enum ChartError {
     #[error("the template has no <c:title> to replace")]
     NoTitleInTemplate,
 
+    /// An axis title or series name was swapped at an index the template has
+    /// no element for. `kind` is `"axis"` or `"series"`; `count` is how many
+    /// the template holds, counted in document order.
+    #[error("the template has {count} {kind} element(s); index {index} is out of range")]
+    TemplateIndexOutOfRange {
+        /// `"axis"` or `"series"`.
+        kind: &'static str,
+        /// The index that was asked for.
+        index: usize,
+        /// How many the template holds.
+        count: usize,
+    },
+
+    /// [`TemplateChart::with_axis_title`](crate::TemplateChart::with_axis_title)
+    /// was used on an axis with no plain-text title to replace: it has none,
+    /// or its title is bound to a cell via `<c:strRef>`.
+    #[error("axis {axis} of the template has no plain-text title to replace")]
+    NoAxisTitleInTemplate {
+        /// The axis index, in document order.
+        axis: usize,
+    },
+
+    /// [`TemplateChart::with_series_name`](crate::TemplateChart::with_series_name)
+    /// was used on a series whose name is not a literal `<c:tx><c:v>` — it is
+    /// bound to a cell (change the cell, or use `with_references`) or absent.
+    #[error("series {series} of the template has no literal name to replace")]
+    NoSeriesNameInTemplate {
+        /// The series index, in document order.
+        series: usize,
+    },
+
+    /// A `<c:ser>` or axis element in the template is opened but never closed,
+    /// so its extent cannot be known.
+    #[error("the element opened at byte {at} of the template is never closed")]
+    UnclosedElement {
+        /// Byte offset of the element's `<`.
+        at: usize,
+    },
+
     /// Two of template mode's edits to the template overlap, so applying
     /// both would corrupt one of them — most often because a `<c:f>`
     /// reference element is nested inside the chart title's text, which

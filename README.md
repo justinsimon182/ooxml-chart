@@ -50,6 +50,20 @@ let part = ChartSpec::from_template(sibling)?
 # Ok::<(), ooxml_chart::ChartError>(())
 ```
 
+The chart title, each axis title and each literal series name can be swapped
+too. Axes and series are addressed by their position in the template
+(`axis_count`, `series_count`); a swap that has nothing to land on — an axis
+with no title, a series named by a cell reference — is an error, never a guess.
+
+```rust
+# use ooxml_chart::ChartSpec;
+# let sibling: &[u8] = br#"<c:chartSpace><c:plotArea><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>Old</c:v></c:tx></c:ser></c:plotArea></c:chartSpace>"#;
+let part = ChartSpec::from_template(sibling)?
+    .with_series_name(0, "Findings")
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
 ## Placing a chart
 
 A `twoCellAnchor` chart has no stored width or height — its size is the

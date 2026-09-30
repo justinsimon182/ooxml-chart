@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Template mode: `TemplateChart::with_axis_title` and `with_series_name` swap an
+  axis title or a literal series name by document-order index
+  (`axis_count`, `series_count`). New errors `TemplateIndexOutOfRange`,
+  `NoAxisTitleInTemplate`, `NoSeriesNameInTemplate` and `UnclosedElement`.
 - `scripts/validate_gallery.py` validates the gallery example's output against
   the ECMA-376 schemas; the gallery now also writes a fully-optioned variant of
   every kind and one drawing per anchor type.
