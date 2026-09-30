@@ -1838,3 +1838,119 @@ mod legend_entries {
         assert!(matches!(result, Err(ChartError::Unsupported { .. })));
     }
 }
+
+// --- Label text from cells -----------------------------------------------------------
+
+mod label_cells {
+    use super::*;
+    use ooxml_chart::DataLabels;
+
+    fn ranged() -> Series {
+        series().with_label_range("'S'!$D$2:$D$5")
+    }
+
+    #[test]
+    fn a_range_is_written_as_the_last_thing_in_the_series() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(ranged())
+                .data_labels(DataLabels::default().with_cells()),
+        );
+        assert_well_formed(&xml);
+        assert!(
+            xml.contains(r#"<c:extLst><c:ext uri="{02D57815-91ED-43cb-92C2-25804820EDAC}" xmlns:c15="http://schemas.microsoft.com/office/drawing/2012/chart"><c15:datalabelsRange><c15:f>&#39;S&#39;!$D$2:$D$5</c15:f></c15:datalabelsRange></c:ext></c:extLst></c:ser>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn the_labels_switch_the_range_on_at_the_end_of_the_label_group() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(ranged())
+                .data_labels(DataLabels::default().with_cells()),
+        );
+        assert!(
+            xml.contains(r#"<c:showBubbleSize val="0"/><c:extLst><c:ext uri="{CE6537A1-D6FC-4f65-9D91-7224C49458BB}" xmlns:c15="http://schemas.microsoft.com/office/drawing/2012/chart"><c15:showDataLabelsRange val="1"/></c:ext></c:extLst></c:dLbls>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_cache_is_written_inside_the_range() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .series(ranged().with_cached_label_range(vec!["a".into(), "b<".into()]))
+                .data_labels(DataLabels::values().with_cells()),
+        );
+        assert!(
+            xml.contains(r#"</c15:f><c15:dlblRangeCache><c:ptCount val="2"/><c:pt idx="0"><c:v>a</c:v></c:pt><c:pt idx="1"><c:v>b&lt;</c:v></c:pt></c15:dlblRangeCache>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn point_overrides_keep_the_range_switched_on() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line)
+                .series(ranged().with_point_label(1, ooxml_chart::PointLabel::text("x")))
+                .data_labels(DataLabels::default().with_cells()),
+        );
+        assert_well_formed(&xml);
+        assert_eq!(xml.matches("showDataLabelsRange").count(), 3, "{xml}");
+    }
+
+    #[test]
+    fn a_pie_and_a_scatter_take_ranges_too() {
+        for kind in [ChartKind::Pie, ChartKind::Scatter] {
+            let xml = render(
+                ChartSpec::new(kind)
+                    .series(ranged())
+                    .data_labels(DataLabels::default().with_cells()),
+            );
+            assert_well_formed(&xml);
+            assert!(xml.contains("datalabelsRange"), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn nothing_is_written_without_them() {
+        let xml = render(ChartSpec::new(ChartKind::Line).series(series()));
+        assert!(!xml.contains("c15"), "{xml}");
+    }
+
+    #[test]
+    fn mismatches_are_refused() {
+        let unsupported = |spec: ChartSpec| {
+            assert!(
+                matches!(spec.render(), Err(ChartError::Unsupported { .. })),
+                "should be refused"
+            );
+        };
+        // A range nobody asks to show.
+        unsupported(ChartSpec::new(ChartKind::Line).series(ranged()));
+        unsupported(
+            ChartSpec::new(ChartKind::Line)
+                .series(ranged())
+                .data_labels(DataLabels::values()),
+        );
+        // Labels asking for a range a series lacks.
+        unsupported(
+            ChartSpec::new(ChartKind::Line)
+                .series(ranged())
+                .series(series())
+                .data_labels(DataLabels::values().with_cells()),
+        );
+        // An empty range, and a cache with no range.
+        unsupported(
+            ChartSpec::new(ChartKind::Line)
+                .series(series().with_label_range("  "))
+                .data_labels(DataLabels::values().with_cells()),
+        );
+        unsupported(
+            ChartSpec::new(ChartKind::Line)
+                .series(series().with_cached_label_range(vec!["a".into()]))
+                .data_labels(DataLabels::values()),
+        );
+    }
+}
