@@ -250,7 +250,8 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     out.push_str("</c:plotArea>");
     if let Some(code) = spec.legend.code() {
         out.push_str(&format!(
-            r#"<c:legend><c:legendPos val="{code}"/>{}<c:overlay val="{}"/>{}</c:legend>"#,
+            r#"<c:legend><c:legendPos val="{code}"/>{}{}<c:overlay val="{}"/>{}</c:legend>"#,
+            legend_entries_xml(&spec.hidden_legend_entries),
             layout_xml(spec.legend_layout.as_ref(), false),
             i32::from(spec.legend_overlay),
             spec.legend_style
@@ -304,6 +305,27 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
         .flatten()
     {
         check_layout(layout)?;
+    }
+    if !spec.hidden_legend_entries.is_empty() {
+        if spec.legend.code().is_none() {
+            return unsupported("a hidden legend entry with no legend".to_string());
+        }
+        // A pie's entries are its points, whose count lives in the sheet.
+        if !matches!(primary.family, Family::Pie | Family::Doughnut) {
+            let count: usize = plots.iter().map(|plot| plot.series.len()).sum();
+            for &index in &spec.hidden_legend_entries {
+                check_range(
+                    "legend entry",
+                    i64::try_from(index).unwrap_or(i64::MAX),
+                    0,
+                    count as i64 - 1,
+                )?;
+            }
+        }
+    }
+    let leader_lines = spec.data_labels.as_ref().is_some_and(|l| l.leader_lines);
+    if leader_lines && !matches!(primary.family, Family::Pie | Family::Doughnut) {
+        return unsupported(format!("leader lines on {:?}", primary.kind));
     }
     if let Some(table) = &spec.data_table {
         // Excel offers a data table for column, line and area charts only.
@@ -862,7 +884,34 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
 }
 
 fn data_labels_xml(labels: &DataLabels) -> String {
-    format!("<c:dLbls>{}</c:dLbls>", label_group_xml(labels))
+    format!(
+        "<c:dLbls>{}{}</c:dLbls>",
+        label_group_xml(labels),
+        leader_lines_xml(labels)
+    )
+}
+
+/// `<c:showLeaderLines>`, which follows the flags in a `<c:dLbls>` and has no
+/// place in a single `<c:dLbl>`.
+fn leader_lines_xml(labels: &DataLabels) -> &'static str {
+    if labels.leader_lines {
+        r#"<c:showLeaderLines val="1"/>"#
+    } else {
+        ""
+    }
+}
+
+/// One `<c:legendEntry>` per hidden entry, in index order.
+fn legend_entries_xml(hidden: &[usize]) -> String {
+    let mut indices = hidden.to_vec();
+    indices.sort_unstable();
+    indices.dedup();
+    indices
+        .into_iter()
+        .map(|index| {
+            format!(r#"<c:legendEntry><c:idx val="{index}"/><c:delete val="1"/></c:legendEntry>"#)
+        })
+        .collect()
 }
 
 /// The settings common to a `<c:dLbls>` and a `<c:dLbl>`, in schema order.
@@ -922,7 +971,7 @@ fn series_labels_xml(series: &Series, chart_wide: Option<&DataLabels>) -> String
         .map(|(index, label)| point_label_xml(*index, label, &inherited))
         .collect();
     let group = chart_wide
-        .map(label_group_xml)
+        .map(|labels| format!("{}{}", label_group_xml(labels), leader_lines_xml(labels)))
         .unwrap_or_else(|| label_flags_xml(&DataLabels::default()));
     format!("<c:dLbls>{entries}{group}</c:dLbls>")
 }

@@ -413,6 +413,27 @@ fn main() {
                 .series(series("South", "C", "0090B2")),
         ),
         (
+            "legend_entry_hidden",
+            ChartSpec::new(ChartKind::LineMarkers)
+                .title("Legend entry")
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2"))
+                .hide_legend_entry(1),
+        ),
+        (
+            "pie_leader_lines",
+            ChartSpec::new(ChartKind::Pie)
+                .title("Leader lines")
+                .data_labels(
+                    DataLabels::values()
+                        .with_percent()
+                        .with_leader_lines()
+                        .at(DataLabelPosition::OutsideEnd),
+                )
+                .hide_legend_entry(0)
+                .series(series("Share", "B", "8E0DD1")),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")

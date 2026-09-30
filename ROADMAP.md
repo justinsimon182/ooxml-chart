@@ -57,7 +57,7 @@ does not read, write, or zip `.xlsx` packages.
 | Data labels: value, category, series name, percent, number format, position | Done — positions validated per kind |
 | Manual plot-area and legend layout | Done — `Layout`, `ChartSpec::plot_area_layout`, `legend_layout` |
 | Manual title and axis-title layout | Done (`title_position`) |
-| Leader lines, legend-entry deletion, per-label text from cells or fields | **Open** |
+| Leader lines, legend-entry deletion, per-label text from cells or fields | **Open** (leader lines and legend-entry deletion are done: `with_leader_lines`, `hide_legend_entry`) |
 | Data table under the plot | Done (`ChartSpec::data_table`) |
 
 ## Drawing and package helpers
@@ -83,7 +83,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 55 in all) validates against the
+date axis, and one drawing per anchor type â€” 57 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

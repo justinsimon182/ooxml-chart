@@ -30,6 +30,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Legend entry deletion: `ChartSpec::hide_legend_entry(index)` writes
+  `<c:legendEntry>` with `<c:delete>`. Refused with no legend or for a series
+  that does not exist.
+- Pie and doughnut leader lines: `DataLabels::with_leader_lines` writes
+  `<c:showLeaderLines>`. Refused on other kinds.
 - Data table: `ChartSpec::data_table` (`DataTable`: borders, outline, legend
   keys, font) writes `<c:dTable>` under the plot area of column, line and area
   charts. Other kinds are refused.

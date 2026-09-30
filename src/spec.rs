@@ -1463,6 +1463,9 @@ pub struct DataLabels {
     pub number_format: Option<String>,
     /// Font for the labels.
     pub style: Option<TextStyle>,
+    /// Draw leader lines from labels that sit away from their slice. Pie and
+    /// doughnut only.
+    pub leader_lines: bool,
 }
 
 impl DataLabels {
@@ -1492,6 +1495,14 @@ impl DataLabels {
     #[must_use]
     pub fn with_percent(mut self) -> Self {
         self.percent = true;
+        self
+    }
+
+    /// Also draw leader lines from outlying labels to their slices (pie and
+    /// doughnut).
+    #[must_use]
+    pub fn with_leader_lines(mut self) -> Self {
+        self.leader_lines = true;
         self
     }
 
@@ -1679,6 +1690,8 @@ pub struct ChartSpec {
     pub(crate) plot_area_layout: Option<Layout>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) legend_layout: Option<Layout>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) hidden_legend_entries: Vec<usize>,
     #[cfg_attr(feature = "serde", serde(default, rename = "plots"))]
     pub(crate) extra_plots: Vec<Plot>,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -1713,6 +1726,7 @@ impl ChartSpec {
             plot_area: None,
             plot_area_layout: None,
             legend_layout: None,
+            hidden_legend_entries: Vec::new(),
             extra_plots: Vec::new(),
             secondary_value_axis: Axis::default(),
             bubble_scale: 100,
@@ -1820,6 +1834,16 @@ impl ChartSpec {
     #[must_use]
     pub fn legend_overlay(mut self, overlay: bool) -> Self {
         self.legend_overlay = overlay;
+        self
+    }
+
+    /// Removes one entry from the legend. `index` counts the series in order
+    /// across every plot (for a pie or doughnut, the points of its series).
+    /// Needs a legend, and a series that exists: anything else is refused at
+    /// render time. Repeats are ignored.
+    #[must_use]
+    pub fn hide_legend_entry(mut self, index: usize) -> Self {
+        self.hidden_legend_entries.push(index);
         self
     }
 
