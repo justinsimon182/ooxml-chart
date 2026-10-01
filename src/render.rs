@@ -16,6 +16,7 @@ use crate::spec::{
     DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
     LabelField, LabelPart, Layout, MarkerSymbol, OfPie, OfPieSplit, Paint, Plot, PointFormat,
     PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    View3D,
 };
 use crate::xml::escape;
 
@@ -26,6 +27,8 @@ const VALUE_AXIS_ID: u32 = 222;
 /// The secondary pair, used by plots on the right-hand value axis.
 const SECONDARY_CATEGORY_AXIS_ID: u32 = 333;
 const SECONDARY_VALUE_AXIS_ID: u32 = 444;
+/// The depth (series) axis of a 3-D chart.
+const SERIES_AXIS_ID: u32 = 555;
 
 /// EMU in a point, for line widths.
 const EMU_PER_POINT: f64 = 12_700.0;
@@ -120,6 +123,8 @@ struct PlotRef<'a> {
     family: Family,
     series: &'a [Series],
     secondary: bool,
+    /// Drawn with a `<c:view3D>`. Only ever the chart's own plot.
+    three_d: bool,
 }
 
 impl<'a> PlotRef<'a> {
@@ -129,6 +134,18 @@ impl<'a> PlotRef<'a> {
             family: family(kind),
             series,
             secondary,
+            three_d: false,
+        }
+    }
+
+    /// Whether this 3-D plot has a depth axis, so a third `<c:axId>` names it
+    /// rather than the unused `0` Excel writes.
+    fn has_depth_axis(&self, view: &View3D) -> bool {
+        match self.family {
+            Family::Line => true,
+            Family::Area { grouping } => grouping == "standard",
+            Family::Bar { grouping, .. } => grouping == "clustered" && view.depth_axis,
+            _ => false,
         }
     }
 
@@ -224,7 +241,9 @@ fn check_layout(layout: &Layout) -> Result<(), ChartError> {
 }
 
 fn plots(spec: &ChartSpec) -> Vec<PlotRef<'_>> {
-    let mut all = vec![PlotRef::of(spec.kind, &spec.series, false)];
+    let mut first = PlotRef::of(spec.kind, &spec.series, false);
+    first.three_d = spec.view_3d.is_some();
+    let mut all = vec![first];
     all.extend(spec.extra_plots.iter().map(
         |Plot {
              kind,
@@ -251,6 +270,9 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
             spec.title_style.as_ref(),
             spec.title_position,
         ));
+    }
+    if let Some(view) = &spec.view_3d {
+        out.push_str(&view_3d_xml(view, plots[0].family));
     }
     out.push_str("<c:plotArea>");
     out.push_str(&layout_xml(spec.plot_area_layout.as_ref(), true));
@@ -320,6 +342,9 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     }
     for style in [&spec.chart_area, &spec.plot_area].into_iter().flatten() {
         check_area_style(style)?;
+    }
+    if let Some(view) = &spec.view_3d {
+        check_view_3d(spec, primary, view)?;
     }
     for layout in [&spec.plot_area_layout, &spec.legend_layout]
         .into_iter()
@@ -532,7 +557,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             check_series(plot, series)?;
         }
         if let Some(position) = spec.data_labels.as_ref().and_then(|l| l.position) {
-            if !label_positions(plot.family).contains(&position) {
+            if !label_positions(plot).contains(&position) {
                 return Err(ChartError::InvalidDataLabelPosition {
                     position: position.name(),
                 });
@@ -650,7 +675,7 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
             check_text_style(style)?;
         }
         if let Some(position) = label.position {
-            if !label_positions(plot.family).contains(&position) {
+            if !label_positions(plot).contains(&position) {
                 return Err(ChartError::InvalidDataLabelPosition {
                     position: position.name(),
                 });
@@ -659,16 +684,17 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
     }
     check_error_bars(plot, series)?;
     if !series.trendlines.is_empty() {
-        let allowed = match plot.family {
-            Family::Bar { grouping, .. } => grouping == "clustered",
-            Family::Area { grouping } => grouping == "standard",
-            Family::Line | Family::Scatter | Family::Bubble => true,
-            Family::Pie
-            | Family::Doughnut
-            | Family::OfPie { .. }
-            | Family::Radar { .. }
-            | Family::Stock { .. } => false,
-        };
+        let allowed = !plot.three_d
+            && match plot.family {
+                Family::Bar { grouping, .. } => grouping == "clustered",
+                Family::Area { grouping } => grouping == "standard",
+                Family::Line | Family::Scatter | Family::Bubble => true,
+                Family::Pie
+                | Family::Doughnut
+                | Family::OfPie { .. }
+                | Family::Radar { .. }
+                | Family::Stock { .. } => false,
+            };
         if !allowed {
             return unsupported(format!("a trendline on {:?}", plot.kind));
         }
@@ -682,6 +708,9 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
 fn check_error_bars(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
     if series.error_bars.is_empty() {
         return Ok(());
+    }
+    if plot.three_d {
+        return unsupported(format!("error bars on a 3-D {:?}", plot.kind));
     }
     let has_x = matches!(plot.family, Family::Scatter | Family::Bubble);
     if is_round(plot.family) || matches!(plot.family, Family::Radar { .. }) {
@@ -1026,8 +1055,13 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
 
 /// The label positions Excel accepts for a kind. Anything else — even a
 /// position that is fine on a sibling kind — makes it report the file damaged.
-fn label_positions(family: Family) -> &'static [DataLabelPosition] {
+fn label_positions(plot: &PlotRef<'_>) -> &'static [DataLabelPosition] {
     use DataLabelPosition::*;
+    // A 3-D pie keeps its positions; every other 3-D chart has none.
+    if plot.three_d && plot.family != Family::Pie {
+        return &[];
+    }
+    let family = plot.family;
     match family {
         Family::Bar {
             grouping: "clustered",
@@ -1066,6 +1100,17 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
         .unwrap_or_default();
     let (category_id, value_id) = plot.axis_ids();
     let axes = format!(r#"<c:axId val="{category_id}"/><c:axId val="{value_id}"/>"#);
+    if let (true, Some(view)) = (plot.three_d, &spec.view_3d) {
+        // A 3-D chart names a third axis: the depth axis, or the unused `0`
+        // Excel writes when there is none.
+        let third = if plot.has_depth_axis(view) {
+            SERIES_AXIS_ID
+        } else {
+            0
+        };
+        let axes = format!(r#"{axes}<c:axId val="{third}"/>"#);
+        return plot_3d_xml(spec, plot, view, &series, &labels, &axes);
+    }
 
     match plot.family {
         Family::Bar {
@@ -1189,6 +1234,156 @@ fn stock_bars_xml(spec: &ChartSpec) -> String {
         bar("upBars", up),
         bar("downBars", down)
     )
+}
+
+/// The 3-D counterpart of a plot element.
+fn plot_3d_xml(
+    spec: &ChartSpec,
+    plot: &PlotRef<'_>,
+    view: &View3D,
+    series: &str,
+    labels: &str,
+    axes: &str,
+) -> String {
+    let gap_depth = view.gap_depth.unwrap_or(150);
+    match plot.family {
+        Family::Bar {
+            horizontal,
+            grouping,
+        } => {
+            let direction = if horizontal { "bar" } else { "col" };
+            let grouping = if view.depth_axis {
+                "standard"
+            } else {
+                grouping
+            };
+            let shape = view
+                .bar_shape
+                .map(|shape| format!(r#"<c:shape val="{}"/>"#, shape.code()))
+                .unwrap_or_default();
+            format!(
+                r#"<c:bar3DChart><c:barDir val="{direction}"/><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapWidth val="{gap}"/><c:gapDepth val="{gap_depth}"/>{shape}{axes}</c:bar3DChart>"#,
+                gap = spec.gap_width,
+            )
+        }
+        Family::Line => format!(
+            r#"<c:line3DChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}<c:gapDepth val="{gap_depth}"/>{axes}</c:line3DChart>"#
+        ),
+        Family::Area { grouping } => format!(
+            r#"<c:area3DChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapDepth val="{gap_depth}"/>{axes}</c:area3DChart>"#
+        ),
+        _ => format!(r#"<c:pie3DChart><c:varyColors val="1"/>{series}{labels}</c:pie3DChart>"#),
+    }
+}
+
+/// `<c:view3D>` and the floor and walls that follow it.
+fn view_3d_xml(view: &View3D, family: Family) -> String {
+    let pie = family == Family::Pie;
+    let right_angle = view.right_angle_axes.unwrap_or(!pie);
+    let rot_x = view.rotation_x.unwrap_or(if pie { 30 } else { 15 });
+    let rot_y = view.rotation_y.unwrap_or(if pie { 0 } else { 20 });
+    let height = view
+        .height_percent
+        .map(|percent| format!(r#"<c:hPercent val="{percent}"/>"#))
+        .unwrap_or_default();
+    let depth = view
+        .depth_percent
+        .map(|percent| format!(r#"<c:depthPercent val="{percent}"/>"#))
+        .unwrap_or_default();
+    let perspective = if right_angle {
+        String::new()
+    } else {
+        format!(
+            r#"<c:perspective val="{}"/>"#,
+            view.perspective.unwrap_or(30)
+        )
+    };
+    let surface = |tag: &str, style: &Option<AreaStyle>| {
+        style
+            .as_ref()
+            .map(|style| {
+                format!(
+                    r#"<c:{tag}><c:thickness val="0"/>{}</c:{tag}>"#,
+                    sp_pr_xml(style)
+                )
+            })
+            .unwrap_or_default()
+    };
+    format!(
+        r#"<c:view3D><c:rotX val="{rot_x}"/>{height}<c:rotY val="{rot_y}"/>{depth}<c:rAngAx val="{}"/>{perspective}</c:view3D>{}{}{}"#,
+        i32::from(right_angle),
+        surface("floor", &view.floor),
+        surface("sideWall", &view.side_wall),
+        surface("backWall", &view.back_wall),
+    )
+}
+
+/// The depth axis of a 3-D chart, as Excel writes it.
+fn series_axis_xml() -> String {
+    format!(
+        r#"<c:serAx><c:axId val="{SERIES_AXIS_ID}"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="{VALUE_AXIS_ID}"/><c:crosses val="autoZero"/></c:serAx>"#
+    )
+}
+
+fn check_view_3d(spec: &ChartSpec, primary: &PlotRef<'_>, view: &View3D) -> Result<(), ChartError> {
+    let pie = primary.family == Family::Pie;
+    let bar = matches!(primary.family, Family::Bar { .. });
+    if !(bar || pie || matches!(primary.family, Family::Line | Family::Area { .. })) {
+        return unsupported(format!("a 3-D view on {:?}", primary.kind));
+    }
+    if !spec.extra_plots.is_empty() {
+        return unsupported("a 3-D view on a combination chart".to_string());
+    }
+    let ranges: [(&str, Option<i64>, i64, i64); 6] = [
+        ("3-D rotation x", view.rotation_x.map(i64::from), -90, 90),
+        ("3-D rotation y", view.rotation_y.map(i64::from), 0, 360),
+        ("3-D perspective", view.perspective.map(i64::from), 0, 240),
+        ("3-D height", view.height_percent.map(i64::from), 5, 500),
+        ("3-D depth", view.depth_percent.map(i64::from), 20, 2000),
+        ("3-D gap depth", view.gap_depth.map(i64::from), 0, 500),
+    ];
+    for (what, value, min, max) in ranges {
+        if let Some(value) = value {
+            check_range(what, value, min, max)?;
+        }
+    }
+    if view.right_angle_axes == Some(true) && view.perspective.is_some() {
+        return unsupported("a 3-D perspective with right-angle axes".to_string());
+    }
+    if pie
+        && (view.right_angle_axes == Some(true)
+            || view.gap_depth.is_some()
+            || view.bar_shape.is_some()
+            || view.depth_axis
+            || view.floor.is_some()
+            || view.side_wall.is_some()
+            || view.back_wall.is_some())
+    {
+        return unsupported(
+            "right-angle axes, depth, shapes, floor or walls on a 3-D pie".to_string(),
+        );
+    }
+    if view.bar_shape.is_some() && !bar {
+        return unsupported(format!("a bar shape on {:?}", primary.kind));
+    }
+    if view.depth_axis
+        && !matches!(
+            primary.family,
+            Family::Bar {
+                grouping: "clustered",
+                ..
+            }
+        )
+    {
+        return unsupported(format!("a depth axis on {:?}", primary.kind));
+    }
+    for style in [&view.floor, &view.side_wall, &view.back_wall]
+        .into_iter()
+        .flatten()
+    {
+        check_area_style(style)?;
+    }
+    Ok(())
 }
 
 fn data_labels_xml(labels: &DataLabels) -> String {
@@ -2056,6 +2251,11 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
                 ..Axis::default().hidden()
             },
         ));
+    }
+    if let (true, Some(view)) = (plots[0].three_d, &spec.view_3d) {
+        if plots[0].has_depth_axis(view) {
+            out.push_str(&series_axis_xml());
+        }
     }
     out
 }

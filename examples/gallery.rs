@@ -4,10 +4,10 @@
 //! output between versions or feeding another tool's validator.
 
 use ooxml_chart::{
-    AreaStyle, Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DataTable, DateUnit,
-    DisplayUnit, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout, LegendPosition,
-    MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
-    TickLabels, Trendline, TrendlineKind,
+    AreaStyle, Axis, BarShape, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DataTable,
+    DateUnit, DisplayUnit, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout,
+    LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName,
+    TextStyle, TickLabels, Trendline, TrendlineKind, View3D,
 };
 use ooxml_chart::{
     Gradient, LabelField, LabelPart, OfPie, OfPieSplit, Paint, Pattern, PatternKind,
@@ -615,6 +615,51 @@ fn run() {
             ChartSpec::new(ChartKind::BarOfPie)
                 .title("Bar of pie, under 15%")
                 .of_pie(OfPie::new().split(OfPieSplit::PercentBelow(15.0)))
+                .series(series("Share", "B", "8E0DD1")),
+        ),
+        (
+            "column_3d",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("3-D column")
+                .view_3d(
+                    View3D::new()
+                        .bar_shape(BarShape::Cylinder)
+                        .floor(AreaStyle::new().fill("F8F6F0"))
+                        .back_wall(AreaStyle::new().fill("FFFFFF")),
+                )
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "column_3d_depth_axis",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("3-D column with depth axis")
+                .view_3d(View3D::new().with_depth_axis().rotation_y(30))
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "line_3d",
+            ChartSpec::new(ChartKind::Line)
+                .title("3-D line")
+                .view_3d(View3D::new().perspective(40))
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "area_3d_stacked",
+            ChartSpec::new(ChartKind::AreaStacked)
+                .title("3-D stacked area")
+                .view_3d(View3D::new())
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "pie_3d",
+            ChartSpec::new(ChartKind::Pie)
+                .title("3-D pie")
+                .view_3d(View3D::new().rotation_x(40))
+                .data_labels(DataLabels::values().with_percent())
                 .series(series("Share", "B", "8E0DD1")),
         ),
         (
