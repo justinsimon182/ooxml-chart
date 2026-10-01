@@ -1407,6 +1407,34 @@ mod display_units {
     }
 
     #[test]
+    fn a_custom_caption_is_written_escaped_and_shows_the_label() {
+        let xml = chart(
+            ChartKind::Line,
+            Axis::default(),
+            Axis::default()
+                .display_units(DisplayUnit::Millions)
+                .display_units_caption("USD <m>"),
+        )
+        .expect("a chart");
+        assert!(
+            xml.contains(r#"<c:dispUnits><c:builtInUnit val="millions"/><c:dispUnitsLbl><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>USD &lt;m&gt;</a:t></a:r></a:p></c:rich></c:tx></c:dispUnitsLbl></c:dispUnits>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_caption_without_a_unit_or_with_no_text_is_refused() {
+        for axis in [
+            Axis::default().display_units_caption("x"),
+            Axis::default()
+                .display_units(DisplayUnit::Millions)
+                .display_units_caption(""),
+        ] {
+            assert!(chart(ChartKind::Line, Axis::default(), axis).is_err());
+        }
+    }
+
+    #[test]
     fn a_custom_divisor_and_the_caption_are_written() {
         let xml = chart(
             ChartKind::Line,

@@ -391,7 +391,7 @@ fn run() {
                 .value_axis(
                     Axis::default()
                         .display_units(DisplayUnit::Thousands)
-                        .display_units_label(true),
+                        .display_units_caption("USD thousands"),
                 )
                 .series(series("North", "B", "8E0DD1")),
         ),

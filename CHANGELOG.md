@@ -30,6 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `Axis::display_units_caption` words the caption beside a scaled axis
+  yourself. Refused without a display unit or with empty text.
 - Surface charts: `ChartKind::Surface`, `SurfaceWireframe`, `Contour` and
   `ContourWireframe` write `<c:surface3DChart>` or `<c:surfaceChart>` with the
   depth axis they need. `ChartSpec::surface_bands` colours the value bands, and
