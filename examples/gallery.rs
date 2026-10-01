@@ -9,7 +9,9 @@ use ooxml_chart::{
     MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName, TextStyle,
     TickLabels, Trendline, TrendlineKind,
 };
-use ooxml_chart::{Gradient, LabelField, LabelPart, Paint, Pattern, PatternKind};
+use ooxml_chart::{
+    Gradient, LabelField, LabelPart, OfPie, OfPieSplit, Paint, Pattern, PatternKind,
+};
 use std::{env, fs, path::PathBuf};
 
 fn main() {
@@ -584,6 +586,36 @@ fn run() {
                         .series(series("Close", "E", "010102"))
                         .on_secondary_axis(),
                 ),
+        ),
+        (
+            "pie_of_pie",
+            ChartSpec::new(ChartKind::PieOfPie)
+                .title("Pie of pie")
+                .data_labels(DataLabels::values().with_percent())
+                .of_pie(
+                    OfPie::new()
+                        .split(OfPieSplit::LastPoints(2))
+                        .second_size(60),
+                )
+                .series(series("Share", "B", "8E0DD1")),
+        ),
+        (
+            "bar_of_pie_custom",
+            ChartSpec::new(ChartKind::BarOfPie)
+                .title("Bar of pie")
+                .of_pie(
+                    OfPie::new()
+                        .split(OfPieSplit::Points(vec![1, 2]))
+                        .without_series_lines(),
+                )
+                .series(series("Share", "B", "8E0DD1")),
+        ),
+        (
+            "bar_of_pie_percent",
+            ChartSpec::new(ChartKind::BarOfPie)
+                .title("Bar of pie, under 15%")
+                .of_pie(OfPie::new().split(OfPieSplit::PercentBelow(15.0)))
+                .series(series("Share", "B", "8E0DD1")),
         ),
         (
             "date_axis",

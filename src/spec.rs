@@ -57,6 +57,11 @@ pub enum ChartKind {
     /// and down bars between open and close. Takes exactly four series, in that
     /// order. Colour the bars with [`ChartSpec::stock_bars`].
     StockOpenHighLowClose,
+    /// A pie whose smaller slices are gathered into a second, smaller pie
+    /// beside it. One series. Choose what moves with [`ChartSpec::of_pie`].
+    PieOfPie,
+    /// Like [`ChartKind::PieOfPie`], but the second plot is a stacked bar.
+    BarOfPie,
 }
 
 impl ChartKind {
@@ -65,7 +70,10 @@ impl ChartKind {
     /// Pie and doughnut are the exceptions: they have no axes at all, and
     /// emitting `<c:axId>` for them produces a file Excel refuses.
     pub(crate) fn has_axes(self) -> bool {
-        !matches!(self, ChartKind::Pie | ChartKind::Doughnut)
+        !matches!(
+            self,
+            ChartKind::Pie | ChartKind::Doughnut | ChartKind::PieOfPie | ChartKind::BarOfPie
+        )
     }
 }
 
@@ -1956,6 +1964,80 @@ impl PointLabel {
     }
 }
 
+/// Which points a pie-of-pie or bar-of-pie moves to its second plot.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum OfPieSplit {
+    /// Let Excel choose.
+    #[default]
+    Auto,
+    /// The last `n` points (at least 1).
+    LastPoints(u32),
+    /// Points whose value is below this.
+    ValueBelow(f64),
+    /// Points that are below this percentage of the total, 0-100 exclusive.
+    PercentBelow(f64),
+    /// These points, by zero-based index. At least one, no repeats.
+    Points(Vec<usize>),
+}
+
+/// How a pie-of-pie or bar-of-pie divides itself, set with
+/// [`ChartSpec::of_pie`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct OfPie {
+    /// Which points go to the second plot.
+    pub split: OfPieSplit,
+    /// The second plot's size as a percentage of the first, 5-200. Excel's
+    /// default is 75.
+    pub second_size: u16,
+    /// Draw the lines joining the two plots.
+    pub series_lines: bool,
+}
+
+impl Default for OfPie {
+    fn default() -> Self {
+        Self {
+            split: OfPieSplit::Auto,
+            second_size: 75,
+            series_lines: true,
+        }
+    }
+}
+
+impl OfPie {
+    /// Automatic split, 75% second plot, with joining lines.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Chooses which points move to the second plot.
+    #[must_use]
+    pub fn split(mut self, split: OfPieSplit) -> Self {
+        self.split = split;
+        self
+    }
+
+    /// Sizes the second plot, 5-200 percent of the first.
+    #[must_use]
+    pub fn second_size(mut self, percent: u16) -> Self {
+        self.second_size = percent;
+        self
+    }
+
+    /// Drops the lines joining the two plots.
+    #[must_use]
+    pub fn without_series_lines(mut self) -> Self {
+        self.series_lines = false;
+        self
+    }
+}
+
 /// A live value a data label can show inside its text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2104,6 +2186,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) stock_bars: Option<(String, String)>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) of_pie: Option<OfPie>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) first_slice_angle: u16,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title_style: Option<TextStyle>,
@@ -2151,6 +2235,7 @@ impl ChartSpec {
             data_labels: None,
             hole_size: 50,
             stock_bars: None,
+            of_pie: None,
             first_slice_angle: 0,
             title_style: None,
             title_position: None,
@@ -2363,6 +2448,15 @@ impl ChartSpec {
     #[must_use]
     pub fn data_labels(mut self, labels: DataLabels) -> Self {
         self.data_labels = Some(labels);
+        self
+    }
+
+    /// Sets how a pie-of-pie or bar-of-pie splits its points and how its second
+    /// plot looks. Refused on any other chart. Without it, Excel splits
+    /// automatically.
+    #[must_use]
+    pub fn of_pie(mut self, settings: OfPie) -> Self {
+        self.of_pie = Some(settings);
         self
     }
 

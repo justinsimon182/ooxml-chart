@@ -14,8 +14,8 @@ use crate::reference;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
     DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
-    LabelField, LabelPart, Layout, MarkerSymbol, Paint, Plot, PointFormat, PointLabel, Position,
-    Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
+    LabelField, LabelPart, Layout, MarkerSymbol, OfPie, OfPieSplit, Paint, Plot, PointFormat,
+    PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
 };
 use crate::xml::escape;
 
@@ -65,6 +65,10 @@ enum Family {
     Stock {
         open: bool,
     },
+    /// Pie-of-pie, or with `bar` set, bar-of-pie.
+    OfPie {
+        bar: bool,
+    },
 }
 
 fn family(kind: ChartKind) -> Family {
@@ -97,7 +101,17 @@ fn family(kind: ChartKind) -> Family {
         ChartKind::RadarFilled => Family::Radar { filled: true },
         ChartKind::StockHighLowClose => Family::Stock { open: false },
         ChartKind::StockOpenHighLowClose => Family::Stock { open: true },
+        ChartKind::PieOfPie => Family::OfPie { bar: false },
+        ChartKind::BarOfPie => Family::OfPie { bar: true },
     }
+}
+
+/// The families drawn as slices: no axes, a point per slice.
+fn is_round(family: Family) -> bool {
+    matches!(
+        family,
+        Family::Pie | Family::Doughnut | Family::OfPie { .. }
+    )
 }
 
 /// One drawn plot element: the chart's own series, or an added [`Plot`].
@@ -318,7 +332,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             return unsupported("a hidden legend entry with no legend".to_string());
         }
         // A pie's entries are its points, whose count lives in the sheet.
-        if !matches!(primary.family, Family::Pie | Family::Doughnut) {
+        if !is_round(primary.family) {
             let count: usize = plots.iter().map(|plot| plot.series.len()).sum();
             for &index in &spec.hidden_legend_entries {
                 check_range(
@@ -374,7 +388,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
         }
     }
     let leader_lines = spec.data_labels.as_ref().is_some_and(|l| l.leader_lines);
-    if leader_lines && !matches!(primary.family, Family::Pie | Family::Doughnut) {
+    if leader_lines && !is_round(primary.family) {
         return unsupported(format!("leader lines on {:?}", primary.kind));
     }
     if let Some(table) = &spec.data_table {
@@ -442,6 +456,48 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     }
     if plots.iter().skip(1).any(|plot| plot.secondary) {
         check_axis(&spec.secondary_value_axis)?;
+    }
+
+    // Pie-of-pie and bar-of-pie plot one series and take split settings.
+    for plot in plots {
+        if matches!(plot.family, Family::OfPie { .. }) && plot.series.len() != 1 {
+            return unsupported(format!(
+                "{:?} with {} series: it takes exactly 1",
+                plot.kind,
+                plot.series.len()
+            ));
+        }
+    }
+    if let Some(settings) = &spec.of_pie {
+        if !matches!(primary.family, Family::OfPie { .. }) {
+            return unsupported(format!("of-pie settings on {:?}", primary.kind));
+        }
+        check_range("second plot size", i64::from(settings.second_size), 5, 200)?;
+        match &settings.split {
+            OfPieSplit::Auto => {}
+            OfPieSplit::LastPoints(0) => {
+                return unsupported("a split of zero points".to_string());
+            }
+            OfPieSplit::LastPoints(_) => {}
+            OfPieSplit::ValueBelow(value) if !value.is_finite() => {
+                return unsupported("a non-finite split value".to_string());
+            }
+            OfPieSplit::ValueBelow(_) => {}
+            OfPieSplit::PercentBelow(percent) if !(*percent > 0.0 && *percent < 100.0) => {
+                return unsupported("a split percentage outside 0-100".to_string());
+            }
+            OfPieSplit::PercentBelow(_) => {}
+            OfPieSplit::Points(points) => {
+                let mut sorted = points.clone();
+                sorted.sort_unstable();
+                sorted.dedup();
+                if sorted.is_empty() || sorted.len() != points.len() {
+                    return unsupported(
+                        "a custom split needs at least one point, each once".to_string(),
+                    );
+                }
+            }
+        }
     }
 
     // Stock charts take a fixed set of series and their own bar colours.
@@ -519,7 +575,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     if plots.iter().any(|plot| {
         matches!(
             plot.family,
-            Family::Bar { .. } | Family::Stock { open: true }
+            Family::Bar { .. } | Family::Stock { open: true } | Family::OfPie { .. }
         )
     }) {
         check_range("gap width", i64::from(spec.gap_width), 0, 500)?;
@@ -580,9 +636,7 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
             }
             for part in &label.parts {
                 match part {
-                    LabelPart::Field(LabelField::Percentage)
-                        if !matches!(plot.family, Family::Pie | Family::Doughnut) =>
-                    {
+                    LabelPart::Field(LabelField::Percentage) if !is_round(plot.family) => {
                         return unsupported(format!("a percentage field on {:?}", plot.kind));
                     }
                     LabelPart::Field(LabelField::CellRange) if series.label_range.is_none() => {
@@ -609,7 +663,11 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
             Family::Bar { grouping, .. } => grouping == "clustered",
             Family::Area { grouping } => grouping == "standard",
             Family::Line | Family::Scatter | Family::Bubble => true,
-            Family::Pie | Family::Doughnut | Family::Radar { .. } | Family::Stock { .. } => false,
+            Family::Pie
+            | Family::Doughnut
+            | Family::OfPie { .. }
+            | Family::Radar { .. }
+            | Family::Stock { .. } => false,
         };
         if !allowed {
             return unsupported(format!("a trendline on {:?}", plot.kind));
@@ -626,10 +684,7 @@ fn check_error_bars(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartErro
         return Ok(());
     }
     let has_x = matches!(plot.family, Family::Scatter | Family::Bubble);
-    if matches!(
-        plot.family,
-        Family::Pie | Family::Doughnut | Family::Radar { .. }
-    ) {
+    if is_round(plot.family) || matches!(plot.family, Family::Radar { .. }) {
         return unsupported(format!("error bars on {:?}", plot.kind));
     }
     let mut seen = [false; 2];
@@ -982,7 +1037,7 @@ fn label_positions(family: Family) -> &'static [DataLabelPosition] {
         Family::Line | Family::Scatter | Family::Bubble | Family::Stock { .. } => {
             &[Center, Above, Below, Left, Right]
         }
-        Family::Pie => &[Center, InsideEnd, OutsideEnd, BestFit],
+        Family::Pie | Family::OfPie { .. } => &[Center, InsideEnd, OutsideEnd, BestFit],
         // No position element is legal on these.
         Family::Area { .. } | Family::Doughnut | Family::Radar { .. } => &[],
     }
@@ -1035,6 +1090,14 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
                 r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}<c:marker val="{marker}"/>{axes}</c:lineChart>"#,
             )
         }
+        Family::OfPie { bar } => {
+            let kind = if bar { "bar" } else { "pie" };
+            format!(
+                r#"<c:ofPieChart><c:ofPieType val="{kind}"/><c:varyColors val="1"/>{series}{labels}<c:gapWidth val="{gap}"/>{}</c:ofPieChart>"#,
+                of_pie_xml(spec.of_pie.as_ref()),
+                gap = spec.gap_width,
+            )
+        }
         Family::Stock { open } => {
             let bars = if open {
                 stock_bars_xml(spec)
@@ -1072,6 +1135,42 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             hole = spec.hole_size,
         ),
     }
+}
+
+/// The split, second-plot size and joining lines that end an `<c:ofPieChart>`.
+fn of_pie_xml(settings: Option<&OfPie>) -> String {
+    let default = OfPie::default();
+    let settings = settings.unwrap_or(&default);
+    let split = match &settings.split {
+        OfPieSplit::Auto => r#"<c:splitType val="auto"/>"#.to_string(),
+        OfPieSplit::LastPoints(count) => {
+            format!(r#"<c:splitType val="pos"/><c:splitPos val="{count}"/>"#)
+        }
+        OfPieSplit::ValueBelow(value) => {
+            format!(r#"<c:splitType val="val"/><c:splitPos val="{value}"/>"#)
+        }
+        OfPieSplit::PercentBelow(percent) => {
+            format!(r#"<c:splitType val="percent"/><c:splitPos val="{percent}"/>"#)
+        }
+        OfPieSplit::Points(points) => {
+            let mut sorted = points.clone();
+            sorted.sort_unstable();
+            let items: String = sorted
+                .iter()
+                .map(|point| format!(r#"<c:secondPiePt val="{point}"/>"#))
+                .collect();
+            format!(r#"<c:splitType val="cust"/><c:custSplit>{items}</c:custSplit>"#)
+        }
+    };
+    let lines = if settings.series_lines {
+        "<c:serLines/>"
+    } else {
+        ""
+    };
+    format!(
+        r#"{split}<c:secondPieSize val="{}"/>{lines}"#,
+        settings.second_size
+    )
 }
 
 /// `<c:upDownBars>`: the bars between each category's open and close.
@@ -1462,7 +1561,7 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             .or_else(|| color.map(solid))
             .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
             .unwrap_or_default(),
-        Family::Pie | Family::Doughnut => String::new(),
+        Family::Pie | Family::Doughnut | Family::OfPie { .. } => String::new(),
         Family::Stock { open } => {
             // The high-low line (and bars) draw the chart; the series' own
             // lines are switched off. A high-low-close chart marks the close
@@ -1534,7 +1633,7 @@ fn marker_xml(kind: ChartKind, series: &Series, color: Option<&str>) -> String {
 /// `<c:dPt>` elements, in index order, for the kinds where a point has a shape
 /// of its own: a slice or bar, or on line-like kinds its marker.
 fn points_xml(plot: &PlotRef<'_>, series: &Series) -> String {
-    let round = matches!(plot.family, Family::Pie | Family::Doughnut);
+    let round = is_round(plot.family);
     let shaped = round || matches!(plot.family, Family::Bar { .. } | Family::Bubble);
     let marked = matches!(
         plot.family,

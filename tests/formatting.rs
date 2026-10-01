@@ -2705,3 +2705,150 @@ mod stock_charts {
         assert!(xml.contains("<c:dateAx>"), "{xml}");
     }
 }
+
+// --- Pie-of-pie and bar-of-pie ------------------------------------------------------
+
+mod of_pie {
+    use super::*;
+    use ooxml_chart::{DataLabels, OfPie, OfPieSplit};
+
+    fn pie_of_pie() -> ChartSpec {
+        ChartSpec::new(ChartKind::PieOfPie).series(series())
+    }
+
+    #[test]
+    fn a_pie_of_pie_writes_its_type_then_the_series_then_the_defaults() {
+        let xml = render(pie_of_pie());
+        assert!(
+            xml.contains(r#"<c:ofPieChart><c:ofPieType val="pie"/><c:varyColors val="1"/><c:ser>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"</c:ser><c:gapWidth val="150"/><c:splitType val="auto"/><c:secondPieSize val="75"/><c:serLines/></c:ofPieChart>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_bar_of_pie_is_the_bar_type() {
+        let xml = render(ChartSpec::new(ChartKind::BarOfPie).series(series()));
+        assert!(xml.contains(r#"<c:ofPieType val="bar"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn there_are_no_axes() {
+        let xml = render(pie_of_pie());
+        assert!(
+            !xml.contains("<c:catAx>") && !xml.contains("<c:valAx>"),
+            "{xml}"
+        );
+        assert!(!xml.contains("<c:axId"), "{xml}");
+    }
+
+    #[test]
+    fn each_split_writes_its_type_and_position() {
+        let cases = [
+            (
+                OfPieSplit::LastPoints(3),
+                r#"<c:splitType val="pos"/><c:splitPos val="3"/>"#,
+            ),
+            (
+                OfPieSplit::ValueBelow(2.5),
+                r#"<c:splitType val="val"/><c:splitPos val="2.5"/>"#,
+            ),
+            (
+                OfPieSplit::PercentBelow(10.0),
+                r#"<c:splitType val="percent"/><c:splitPos val="10"/>"#,
+            ),
+            (
+                OfPieSplit::Points(vec![4, 1]),
+                r#"<c:splitType val="cust"/><c:custSplit><c:secondPiePt val="1"/><c:secondPiePt val="4"/></c:custSplit>"#,
+            ),
+        ];
+        for (split, expected) in cases {
+            let xml = render(pie_of_pie().of_pie(OfPie::new().split(split)));
+            assert!(xml.contains(expected), "{expected}\n{xml}");
+        }
+    }
+
+    #[test]
+    fn size_and_lines_are_written() {
+        let xml = render(pie_of_pie().of_pie(OfPie::new().second_size(120).without_series_lines()));
+        assert!(
+            xml.contains(r#"<c:secondPieSize val="120"/></c:ofPieChart>"#),
+            "{xml}"
+        );
+        assert!(!xml.contains("serLines"), "{xml}");
+    }
+
+    #[test]
+    fn gap_width_sets_the_gap_between_the_plots() {
+        let xml = render(pie_of_pie().gap_width(80));
+        assert!(xml.contains(r#"<c:gapWidth val="80"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn points_labels_and_leader_lines_work_like_a_pie() {
+        let xml = render(
+            pie_of_pie()
+                .data_labels(DataLabels::values().with_percent().with_leader_lines())
+                .hide_legend_entry(5),
+        );
+        assert!(xml.contains("<c:showLeaderLines val=\"1\"/>"), "{xml}");
+        assert!(xml.contains(r#"<c:legendEntry><c:idx val="5"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn a_point_colour_writes_a_data_point() {
+        let xml = render(
+            ChartSpec::new(ChartKind::BarOfPie)
+                .series(series().with_point(2, PointFormat::new().color("0090B2"))),
+        );
+        assert!(xml.contains(r#"<c:dPt><c:idx val="2"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn bad_settings_are_refused() {
+        for settings in [
+            OfPie::new().second_size(4),
+            OfPie::new().second_size(201),
+            OfPie::new().split(OfPieSplit::LastPoints(0)),
+            OfPie::new().split(OfPieSplit::ValueBelow(f64::NAN)),
+            OfPie::new().split(OfPieSplit::PercentBelow(0.0)),
+            OfPie::new().split(OfPieSplit::PercentBelow(100.0)),
+            OfPie::new().split(OfPieSplit::Points(vec![])),
+            OfPie::new().split(OfPieSplit::Points(vec![1, 1])),
+        ] {
+            let result = pie_of_pie().of_pie(settings).render();
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn settings_on_another_chart_and_extra_series_are_refused() {
+        let pie = ChartSpec::new(ChartKind::Pie)
+            .series(series())
+            .of_pie(OfPie::new());
+        assert!(matches!(refused(pie), ChartError::Unsupported { .. }));
+        let two = ChartSpec::new(ChartKind::PieOfPie)
+            .series(series())
+            .series(series());
+        assert!(matches!(refused(two), ChartError::Unsupported { .. }));
+    }
+
+    #[test]
+    fn it_cannot_be_combined() {
+        let spec = ChartSpec::new(ChartKind::PieOfPie)
+            .series(series())
+            .plot(Plot::new(ChartKind::Line).series(series()));
+        assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+    }
+
+    #[test]
+    fn error_bars_and_trendlines_are_refused() {
+        let bars = ChartSpec::new(ChartKind::PieOfPie).series(series().with_error_bars(
+            ooxml_chart::ErrorBars::new(ooxml_chart::ErrorAmount::Fixed(1.0)),
+        ));
+        assert!(matches!(refused(bars), ChartError::Unsupported { .. }));
+    }
+}
