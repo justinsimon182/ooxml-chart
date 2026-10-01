@@ -4,6 +4,14 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `scripts/excel_roundtrip.py` also saves each workbook back out of Excel and
+  lists what Excel dropped or changed in the chart or drawing XML (`--verbose`
+  for all of it, `--strict` to fail on it).
+
 ## [0.1.0] - 2026-10-01
 
 ### Breaking
