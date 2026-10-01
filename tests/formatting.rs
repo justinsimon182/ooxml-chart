@@ -3095,3 +3095,146 @@ mod three_d {
         ));
     }
 }
+
+// --- Surface and contour charts -----------------------------------------------------
+
+mod surface {
+    use super::*;
+    use ooxml_chart::{DataLabels, View3D};
+
+    fn two(kind: ChartKind) -> ChartSpec {
+        ChartSpec::new(kind).series(series()).series(series())
+    }
+
+    #[test]
+    fn a_surface_has_the_default_view_three_axes_and_no_bands() {
+        let xml = render(two(ChartKind::Surface));
+        assert!(
+            xml.contains(r#"<c:view3D><c:rotX val="15"/><c:rotY val="20"/><c:rAngAx val="0"/><c:perspective val="30"/></c:view3D><c:plotArea>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<c:surface3DChart><c:wireframe val="0"/><c:ser>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"</c:ser><c:axId val="111"/><c:axId val="222"/><c:axId val="555"/></c:surface3DChart>"#),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<c:catAx>").count(), 1, "{xml}");
+        assert_eq!(xml.matches("<c:valAx>").count(), 1, "{xml}");
+        assert!(xml.contains(r#"<c:serAx><c:axId val="555"/>"#), "{xml}");
+        assert!(!xml.contains("bandFmts"), "{xml}");
+    }
+
+    #[test]
+    fn a_wireframe_switches_the_flag_on() {
+        let xml = render(two(ChartKind::SurfaceWireframe));
+        assert!(
+            xml.contains(r#"<c:surface3DChart><c:wireframe val="1"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_contour_is_a_flat_surface_seen_from_above() {
+        for (kind, flag) in [(ChartKind::Contour, 0), (ChartKind::ContourWireframe, 1)] {
+            let xml = render(two(kind));
+            assert!(
+                xml.contains(r#"<c:view3D><c:rotX val="90"/><c:rotY val="0"/><c:rAngAx val="0"/><c:perspective val="0"/></c:view3D>"#),
+                "{xml}"
+            );
+            assert!(
+                xml.contains(&format!(r#"<c:surfaceChart><c:wireframe val="{flag}"/>"#)),
+                "{xml}"
+            );
+            assert!(xml.contains("<c:serAx>"), "{xml}");
+        }
+    }
+
+    #[test]
+    fn band_colours_follow_the_series_and_precede_the_axes() {
+        let xml = render(two(ChartKind::Surface).surface_bands(["0090b2", "8E0DD1"]));
+        assert!(
+            xml.contains(r#"</c:ser><c:bandFmts><c:bandFmt><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></c:spPr></c:bandFmt><c:bandFmt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></c:spPr></c:bandFmt></c:bandFmts><c:axId"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_surface_view_takes_floor_and_walls() {
+        let xml = render(
+            two(ChartKind::Surface).view_3d(
+                View3D::new()
+                    .rotation_x(30)
+                    .back_wall(AreaStyle::new().fill("FFFFFF")),
+            ),
+        );
+        assert!(xml.contains(r#"<c:rotX val="30"/>"#), "{xml}");
+        assert!(xml.contains("<c:backWall>"), "{xml}");
+    }
+
+    #[test]
+    fn any_legend_entry_may_be_hidden_because_the_bands_are_not_series() {
+        let xml = render(two(ChartKind::Surface).hide_legend_entry(4));
+        assert!(xml.contains(r#"<c:legendEntry><c:idx val="4"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn what_a_surface_series_cannot_carry_is_refused() {
+        let bad = [
+            series().with_color("8E0DD1"),
+            series().with_fill(ooxml_chart::Paint::Color("8E0DD1".into())),
+            series().with_line_width(2.0),
+            series().with_marker(ooxml_chart::MarkerSymbol::Circle, 5),
+            series().with_point(0, PointFormat::new().color("8E0DD1")),
+            series().with_point_label(0, ooxml_chart::PointLabel::hidden()),
+            series().with_label_range("'S'!$D$3:$D$5"),
+        ];
+        for item in bad {
+            let spec = ChartSpec::new(ChartKind::Surface)
+                .series(item)
+                .series(series());
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+
+    #[test]
+    fn labels_bands_on_wireframes_and_other_charts_are_refused() {
+        let labelled = two(ChartKind::Surface).data_labels(DataLabels::values());
+        let wire = two(ChartKind::SurfaceWireframe).surface_bands(["8E0DD1"]);
+        let column = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series())
+            .surface_bands(["8E0DD1"]);
+        for spec in [labelled, wire, column] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+        assert!(matches!(
+            refused(two(ChartKind::Surface).surface_bands(["nope"])),
+            ChartError::InvalidColor(_)
+        ));
+    }
+
+    #[test]
+    fn a_contour_takes_no_view_and_a_surface_no_gap_depth() {
+        let contour = two(ChartKind::Contour).view_3d(View3D::new());
+        let gap = two(ChartKind::Surface).view_3d(View3D::new().gap_depth(10));
+        for spec in [contour, gap] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+
+    #[test]
+    fn a_surface_cannot_be_combined_and_takes_no_data_table_or_date_axis() {
+        let base = two(ChartKind::Surface).plot(Plot::new(ChartKind::Line).series(series()));
+        let added = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series())
+            .plot(Plot::new(ChartKind::Surface).series(series()));
+        let table = two(ChartKind::Surface).data_table(ooxml_chart::DataTable::new());
+        let dates = two(ChartKind::Surface)
+            .category_axis(Axis::default().dates(ooxml_chart::DateUnit::Days));
+        for spec in [base, added, table, dates] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+}

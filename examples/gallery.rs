@@ -220,6 +220,12 @@ fn run() {
     }
 
     // Features that need more than a kind.
+    // A surface takes its colours from value bands, not from its series.
+    let plain = |name: &str, column: &str| {
+        let mut plain = series(name, column, "000000");
+        plain.color = None;
+        plain
+    };
     let extras = [
         (
             "bubble",
@@ -661,6 +667,37 @@ fn run() {
                 .view_3d(View3D::new().rotation_x(40))
                 .data_labels(DataLabels::values().with_percent())
                 .series(series("Share", "B", "8E0DD1")),
+        ),
+        (
+            "surface",
+            ChartSpec::new(ChartKind::Surface)
+                .title("Surface")
+                .surface_bands(["0090B2", "28EAE4", "AF51F1", "8E0DD1"])
+                .series(plain("North", "B"))
+                .series(plain("South", "C"))
+                .series(plain("East", "D")),
+        ),
+        (
+            "surface_wireframe",
+            ChartSpec::new(ChartKind::SurfaceWireframe)
+                .title("Wireframe surface")
+                .view_3d(View3D::new().rotation_y(40))
+                .series(plain("North", "B"))
+                .series(plain("South", "C")),
+        ),
+        (
+            "contour",
+            ChartSpec::new(ChartKind::Contour)
+                .title("Contour")
+                .series(plain("North", "B"))
+                .series(plain("South", "C")),
+        ),
+        (
+            "contour_wireframe",
+            ChartSpec::new(ChartKind::ContourWireframe)
+                .title("Wireframe contour")
+                .series(plain("North", "B"))
+                .series(plain("South", "C")),
         ),
         (
             "date_axis",
