@@ -1493,6 +1493,9 @@ pub struct Axis {
     /// Print the Excel caption for `display_unit` ("Thousands") on the axis.
     /// Needs `display_unit`.
     pub display_unit_label: bool,
+    /// Replaces the caption's text ("Thousands") with your own. Needs
+    /// `display_unit`, and must not be empty. Shows the caption.
+    pub display_unit_caption: Option<String>,
     /// Draw a date axis with this unit. Category axes of bar, column, line and
     /// area charts only.
     pub date_unit: Option<DateUnit>,
@@ -1533,6 +1536,7 @@ impl Default for Axis {
             crosses_at: None,
             display_unit: None,
             display_unit_label: false,
+            display_unit_caption: None,
             date_unit: None,
             major_time_unit: None,
             minor_time_unit: None,
@@ -1715,6 +1719,15 @@ impl Axis {
     #[must_use]
     pub fn display_units_label(mut self, show: bool) -> Self {
         self.display_unit_label = show;
+        self
+    }
+
+    /// Words the caption beside a scaled axis yourself, e.g. "USD millions",
+    /// and shows it.
+    #[must_use]
+    pub fn display_units_caption(mut self, text: impl Into<String>) -> Self {
+        self.display_unit_caption = Some(text.into());
+        self.display_unit_label = true;
         self
     }
 

@@ -374,7 +374,7 @@ fn display_units_survive_a_round_trip() {
         .value_axis(
             Axis::default()
                 .display_units(DisplayUnit::Custom(25.0))
-                .display_units_label(true),
+                .display_units_caption("per 25"),
         );
     let json = serde_json::to_string(&spec).expect("serialises");
     let back: ChartSpec = serde_json::from_str(&json).expect("parses");

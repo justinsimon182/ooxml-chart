@@ -48,7 +48,7 @@ does not read, write, or zip `.xlsx` packages.
 | Date axis major and minor time units | Done — `Axis::date_major`, `date_minor`; never finer than the base unit |
 | Custom crossing value | Done — `Axis::crosses_at`, in the other axis's units |
 | Axis line styling | Done (`Axis::line`) |
-| Display units (thousands, millions) | Done (`Axis::display_units`; custom caption text is Open) |
+| Display units (thousands, millions) | Done (`Axis::display_units`, `display_units_caption`) |
 
 ## Text, colour and layout
 

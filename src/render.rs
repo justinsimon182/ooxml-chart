@@ -1085,6 +1085,14 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
     if axis.display_unit_label && axis.display_unit.is_none() {
         return reason("a display unit label needs a display unit");
     }
+    if let Some(text) = &axis.display_unit_caption {
+        if axis.display_unit.is_none() {
+            return reason("a display unit caption needs a display unit");
+        }
+        if text.is_empty() {
+            return reason("a display unit caption is empty");
+        }
+    }
     if let Some(at) = axis.crosses_at {
         if !at.is_finite() {
             return reason("a crossing value is not finite");
@@ -2486,10 +2494,13 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
             let display = axis
                 .display_unit
                 .map(|unit| {
-                    let label = if axis.display_unit_label {
-                        "<c:dispUnitsLbl/>"
-                    } else {
-                        ""
+                    let label = match (&axis.display_unit_caption, axis.display_unit_label) {
+                        (Some(text), _) => format!(
+                            "<c:dispUnitsLbl><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p></c:rich></c:tx></c:dispUnitsLbl>",
+                            escape(text)
+                        ),
+                        (None, true) => "<c:dispUnitsLbl/>".to_string(),
+                        (None, false) => String::new(),
                     };
                     format!("<c:dispUnits>{}{label}</c:dispUnits>", unit.element())
                 })
