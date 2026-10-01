@@ -13,6 +13,16 @@ use ooxml_chart::{Gradient, LabelField, LabelPart, Paint, Pattern, PatternKind};
 use std::{env, fs, path::PathBuf};
 
 fn main() {
+    // The spec array below is large; Windows gives the main thread only 1 MB.
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(run)
+        .expect("a thread")
+        .join()
+        .expect("the gallery");
+}
+
+fn run() {
     let dir = PathBuf::from(env::args().nth(1).unwrap_or_else(|| "gallery".to_string()));
     fs::create_dir_all(&dir).expect("output directory");
 
@@ -540,6 +550,38 @@ fn main() {
                 .plot(
                     Plot::new(ChartKind::ScatterLines)
                         .series(series("Fit", "C", "28EAE4").with_categories("'S'!$A$3:$A$5"))
+                        .on_secondary_axis(),
+                ),
+        ),
+        (
+            "stock_hlc",
+            ChartSpec::new(ChartKind::StockHighLowClose)
+                .title("High-low-close")
+                .series(series("High", "B", "010102"))
+                .series(series("Low", "C", "010102"))
+                .series(series("Close", "D", "8E0DD1")),
+        ),
+        (
+            "stock_ohlc",
+            ChartSpec::new(ChartKind::StockOpenHighLowClose)
+                .title("Open-high-low-close")
+                .stock_bars("0090B2", "8E0DD1")
+                .series(series("Open", "B", "010102"))
+                .series(series("High", "C", "010102"))
+                .series(series("Low", "D", "010102"))
+                .series(series("Close", "E", "010102")),
+        ),
+        (
+            "stock_volume_ohlc",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Volume with open-high-low-close")
+                .series(series("Volume", "F", "AF51F1"))
+                .plot(
+                    Plot::new(ChartKind::StockOpenHighLowClose)
+                        .series(series("Open", "B", "010102"))
+                        .series(series("High", "C", "010102"))
+                        .series(series("Low", "D", "010102"))
+                        .series(series("Close", "E", "010102"))
                         .on_secondary_axis(),
                 ),
         ),

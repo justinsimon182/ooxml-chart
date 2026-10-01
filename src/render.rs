@@ -61,6 +61,10 @@ enum Family {
     Radar {
         filled: bool,
     },
+    /// High-low-close, or with `open` set, open-high-low-close.
+    Stock {
+        open: bool,
+    },
 }
 
 fn family(kind: ChartKind) -> Family {
@@ -91,6 +95,8 @@ fn family(kind: ChartKind) -> Family {
         ChartKind::Doughnut => Family::Doughnut,
         ChartKind::Radar => Family::Radar { filled: false },
         ChartKind::RadarFilled => Family::Radar { filled: true },
+        ChartKind::StockHighLowClose => Family::Stock { open: false },
+        ChartKind::StockOpenHighLowClose => Family::Stock { open: true },
     }
 }
 
@@ -411,13 +417,14 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
                     ..
                 } | Family::Line
                     | Family::Area { .. }
+                    | Family::Stock { .. }
             );
             // A scatter joins column, line and area as an added plot; it
             // cannot be the chart the others are added to.
             let joins_as_scatter = index > 0 && plot.family == Family::Scatter;
             if !(shares_categories || joins_as_scatter) {
                 return unsupported(format!(
-                    "combining {:?}: column, line and area share a category axis, and a scatter can be added to them",
+                    "combining {:?}: column, line, area and stock share a category axis, and a scatter can be added to them",
                     plot.kind
                 ));
             }
@@ -435,6 +442,32 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     }
     if plots.iter().skip(1).any(|plot| plot.secondary) {
         check_axis(&spec.secondary_value_axis)?;
+    }
+
+    // Stock charts take a fixed set of series and their own bar colours.
+    for plot in plots {
+        if let Family::Stock { open } = plot.family {
+            let wanted = if open { 4 } else { 3 };
+            if plot.series.len() != wanted {
+                return unsupported(format!(
+                    "{:?} with {} series: it takes exactly {wanted}",
+                    plot.kind,
+                    plot.series.len()
+                ));
+            }
+        }
+    }
+    if let Some((up, down)) = &spec.stock_bars {
+        if !plots
+            .iter()
+            .any(|plot| plot.family == Family::Stock { open: true })
+        {
+            return unsupported(
+                "stock bar colours on a chart with no open-high-low-close plot".to_string(),
+            );
+        }
+        check_color(up)?;
+        check_color(down)?;
     }
 
     // Per-series settings.
@@ -455,7 +488,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     if primary.kind.has_axes() {
         let dates_ok = matches!(
             primary.family,
-            Family::Bar { .. } | Family::Line | Family::Area { .. }
+            Family::Bar { .. } | Family::Line | Family::Area { .. } | Family::Stock { .. }
         );
         if spec.category_axis.date_unit.is_some() && !dates_ok {
             return unsupported(format!("a date axis on {:?}", primary.kind));
@@ -483,10 +516,12 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     }
 
     // Bar geometry and round-chart settings.
-    if plots
-        .iter()
-        .any(|plot| matches!(plot.family, Family::Bar { .. }))
-    {
+    if plots.iter().any(|plot| {
+        matches!(
+            plot.family,
+            Family::Bar { .. } | Family::Stock { open: true }
+        )
+    }) {
         check_range("gap width", i64::from(spec.gap_width), 0, 500)?;
         if let Some(overlap) = spec.overlap {
             check_range("overlap", i64::from(overlap), -100, 100)?;
@@ -574,7 +609,7 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
             Family::Bar { grouping, .. } => grouping == "clustered",
             Family::Area { grouping } => grouping == "standard",
             Family::Line | Family::Scatter | Family::Bubble => true,
-            Family::Pie | Family::Doughnut | Family::Radar { .. } => false,
+            Family::Pie | Family::Doughnut | Family::Radar { .. } | Family::Stock { .. } => false,
         };
         if !allowed {
             return unsupported(format!("a trendline on {:?}", plot.kind));
@@ -944,7 +979,9 @@ fn label_positions(family: Family) -> &'static [DataLabelPosition] {
             ..
         } => &[Center, InsideEnd, InsideBase, OutsideEnd],
         Family::Bar { .. } => &[Center, InsideEnd, InsideBase],
-        Family::Line | Family::Scatter | Family::Bubble => &[Center, Above, Below, Left, Right],
+        Family::Line | Family::Scatter | Family::Bubble | Family::Stock { .. } => {
+            &[Center, Above, Below, Left, Right]
+        }
         Family::Pie => &[Center, InsideEnd, OutsideEnd, BestFit],
         // No position element is legal on these.
         Family::Area { .. } | Family::Doughnut | Family::Radar { .. } => &[],
@@ -998,6 +1035,14 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
                 r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}<c:marker val="{marker}"/>{axes}</c:lineChart>"#,
             )
         }
+        Family::Stock { open } => {
+            let bars = if open {
+                stock_bars_xml(spec)
+            } else {
+                String::new()
+            };
+            format!(r#"<c:stockChart>{series}{labels}<c:hiLowLines/>{bars}{axes}</c:stockChart>"#)
+        }
         Family::Area { grouping } => format!(
             r#"<c:areaChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}{axes}</c:areaChart>"#,
         ),
@@ -1027,6 +1072,24 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             hole = spec.hole_size,
         ),
     }
+}
+
+/// `<c:upDownBars>`: the bars between each category's open and close.
+fn stock_bars_xml(spec: &ChartSpec) -> String {
+    let bar = |tag: &str, color: Option<&String>| match color {
+        Some(rgb) => format!("<c:{tag}><c:spPr>{}</c:spPr></c:{tag}>", solid(rgb)),
+        None => format!("<c:{tag}/>"),
+    };
+    let (up, down) = match &spec.stock_bars {
+        Some((up, down)) => (Some(up), Some(down)),
+        None => (None, None),
+    };
+    format!(
+        r#"<c:upDownBars><c:gapWidth val="{}"/>{}{}</c:upDownBars>"#,
+        spec.gap_width,
+        bar("upBars", up),
+        bar("downBars", down)
+    )
 }
 
 fn data_labels_xml(labels: &DataLabels) -> String {
@@ -1400,6 +1463,30 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
             .unwrap_or_default(),
         Family::Pie | Family::Doughnut => String::new(),
+        Family::Stock { open } => {
+            // The high-low line (and bars) draw the chart; the series' own
+            // lines are switched off. A high-low-close chart marks the close
+            // with a tick, and every other series carries no marker.
+            let is_close = plot
+                .series
+                .last()
+                .is_some_and(|last| std::ptr::eq(last, series));
+            let marker = if series.marker.is_none() && !open && is_close {
+                let mut ticked = series.clone();
+                ticked.marker = Some((MarkerSymbol::Dash, 7));
+                marker_xml(plot.kind, &ticked, color)
+            } else if series.marker.is_none() {
+                format!(
+                    r#"<c:marker><c:symbol val="{}"/></c:marker>"#,
+                    MarkerSymbol::None.code()
+                )
+            } else {
+                marker_xml(plot.kind, series, color)
+            };
+            format!(
+                r#"<c:spPr><a:ln w="19050" cap="rnd"><a:noFill/><a:round/></a:ln></c:spPr>{marker}"#
+            )
+        }
         Family::Line | Family::Radar { filled: false } | Family::Scatter => {
             let line = if plot.kind == ChartKind::Scatter {
                 // Markers only: the connecting line is switched off.

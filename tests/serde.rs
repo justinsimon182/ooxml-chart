@@ -272,6 +272,21 @@ fn a_scatter_plot_in_a_combo_survives_a_round_trip() {
 }
 
 #[test]
+fn a_stock_chart_survives_a_round_trip() {
+    let one = |name: &str| Series::new(SeriesName::Literal(name.into()), "S!$B$2:$B$5");
+    let spec = ChartSpec::new(ChartKind::StockOpenHighLowClose)
+        .series(one("O"))
+        .series(one("H"))
+        .series(one("L"))
+        .series(one("C"))
+        .stock_bars("0090B2", "8E0DD1");
+    let json = serde_json::to_string(&spec).expect("serialises");
+    assert!(json.contains("stock_open_high_low_close"), "{json}");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
