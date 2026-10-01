@@ -287,6 +287,26 @@ fn a_stock_chart_survives_a_round_trip() {
 }
 
 #[test]
+fn of_pie_settings_survive_a_round_trip() {
+    use ooxml_chart::{OfPie, OfPieSplit};
+    let spec = ChartSpec::new(ChartKind::BarOfPie)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$9"))
+        .of_pie(
+            OfPie::new()
+                .split(OfPieSplit::Points(vec![5, 6, 7]))
+                .second_size(60)
+                .without_series_lines(),
+        );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    assert!(
+        json.contains("bar_of_pie") && json.contains("points"),
+        "{json}"
+    );
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

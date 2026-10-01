@@ -30,6 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Pie-of-pie and bar-of-pie: `ChartKind::PieOfPie` and `ChartKind::BarOfPie`
+  write `<c:ofPieChart>`. `ChartSpec::of_pie(OfPie)` chooses the split (`Auto`,
+  `LastPoints`, `ValueBelow`, `PercentBelow` or custom `Points`), the second
+  plot's size and the joining lines; the gap between plots is `gap_width`.
+  Points, data labels, leader lines and legend-entry deletion work as on a pie.
+  Refused: more than one series, settings on another chart, bad sizes and
+  splits, combinations, error bars and trendlines.
 - Stock charts: `ChartKind::StockHighLowClose` (three series) and
   `ChartKind::StockOpenHighLowClose` (four), written as `<c:stockChart>` with
   hi-low lines, up/down bars on the latter (`ChartSpec::stock_bars` colours
