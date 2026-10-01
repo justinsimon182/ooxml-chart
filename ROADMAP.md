@@ -21,7 +21,7 @@ does not read, write, or zip `.xlsx` packages.
 | Stock | Done (`StockHighLowClose`, `StockOpenHighLowClose`, volume via a secondary-axis plot) |
 | Pie-of-pie, bar-of-pie | Done (`PieOfPie`, `BarOfPie`, `OfPie`) |
 | 3-D bar, column, line, area, pie | Done (`View3D`) |
-| Surface | **Open** |
+| Surface, wireframe surface, contour, wireframe contour | Done (`Surface`, `SurfaceWireframe`, `Contour`, `ContourWireframe`) |
 | Combining scatter or bubble with other kinds | Done for scatter (added as a `Plot` to column, line or area); bubble cannot be combined in Excel |
 
 ## Series
@@ -86,7 +86,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 76 in all) validates against the
+date axis, and one drawing per anchor type â€” 80 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

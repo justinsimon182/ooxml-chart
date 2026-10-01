@@ -62,6 +62,19 @@ pub enum ChartKind {
     PieOfPie,
     /// Like [`ChartKind::PieOfPie`], but the second plot is a stacked bar.
     BarOfPie,
+    /// Values as a surface stretched over a grid of categories (across) and
+    /// series (into the depth), coloured in bands by value. Set the band
+    /// colours with [`ChartSpec::surface_bands`] and the view with
+    /// [`ChartSpec::view_3d`].
+    Surface,
+    /// Like [`ChartKind::Surface`] drawn as a wire mesh, without the coloured
+    /// bands.
+    SurfaceWireframe,
+    /// A surface seen from straight above: coloured bands of equal value, like
+    /// a contour map.
+    Contour,
+    /// Like [`ChartKind::Contour`] drawn as lines only.
+    ContourWireframe,
 }
 
 impl ChartKind {
@@ -2353,6 +2366,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) view_3d: Option<View3D>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) surface_bands: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) first_slice_angle: u16,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title_style: Option<TextStyle>,
@@ -2402,6 +2417,7 @@ impl ChartSpec {
             stock_bars: None,
             of_pie: None,
             view_3d: None,
+            surface_bands: Vec::new(),
             first_slice_angle: 0,
             title_style: None,
             title_position: None,
@@ -2623,6 +2639,19 @@ impl ChartSpec {
     #[must_use]
     pub fn view_3d(mut self, view: View3D) -> Self {
         self.view_3d = Some(view);
+        self
+    }
+
+    /// Colours the value bands of a surface or contour chart, lowest band
+    /// first, as six-digit hex. Without it Excel picks the colours. Refused on
+    /// any other chart, and on the wireframe kinds, which draw no bands.
+    #[must_use]
+    pub fn surface_bands<I, S>(mut self, colors: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.surface_bands = colors.into_iter().map(Into::into).collect();
         self
     }
 

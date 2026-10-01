@@ -30,6 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Surface charts: `ChartKind::Surface`, `SurfaceWireframe`, `Contour` and
+  `ContourWireframe` write `<c:surface3DChart>` or `<c:surfaceChart>` with the
+  depth axis they need. `ChartSpec::surface_bands` colours the value bands, and
+  a surface takes `view_3d` (a contour is fixed to a view from above). Refused:
+  data labels, series colours, markers, points, labels, trendlines and error bars,
+  band colours on a wireframe or another chart, combinations, data tables, date
+  axes and a view on a contour.
 - 3-D charts: `ChartSpec::view_3d(View3D)` draws bar, column, line, area and
   pie kinds in 3-D (`<c:bar3DChart>`, `line3DChart`, `area3DChart`,
   `pie3DChart`). `View3D` sets the rotation, perspective, height and depth,

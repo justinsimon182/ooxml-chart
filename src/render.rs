@@ -72,6 +72,11 @@ enum Family {
     OfPie {
         bar: bool,
     },
+    /// A surface; `contour` views it from above, `wireframe` draws a mesh.
+    Surface {
+        wireframe: bool,
+        contour: bool,
+    },
 }
 
 fn family(kind: ChartKind) -> Family {
@@ -106,6 +111,22 @@ fn family(kind: ChartKind) -> Family {
         ChartKind::StockOpenHighLowClose => Family::Stock { open: true },
         ChartKind::PieOfPie => Family::OfPie { bar: false },
         ChartKind::BarOfPie => Family::OfPie { bar: true },
+        ChartKind::Surface => Family::Surface {
+            wireframe: false,
+            contour: false,
+        },
+        ChartKind::SurfaceWireframe => Family::Surface {
+            wireframe: true,
+            contour: false,
+        },
+        ChartKind::Contour => Family::Surface {
+            wireframe: false,
+            contour: true,
+        },
+        ChartKind::ContourWireframe => Family::Surface {
+            wireframe: true,
+            contour: true,
+        },
     }
 }
 
@@ -271,8 +292,17 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
             spec.title_position,
         ));
     }
-    if let Some(view) = &spec.view_3d {
-        out.push_str(&view_3d_xml(view, plots[0].family));
+    match (&spec.view_3d, plots[0].family) {
+        // A contour is a surface seen from straight above.
+        (_, Family::Surface { contour: true, .. }) => out.push_str(&view_3d_xml(
+            &View3D::new().rotation_x(90).rotation_y(0).perspective(0),
+            plots[0].family,
+        )),
+        (Some(view), family) => out.push_str(&view_3d_xml(view, family)),
+        (None, family @ Family::Surface { .. }) => {
+            out.push_str(&view_3d_xml(&View3D::new(), family));
+        }
+        (None, _) => {}
     }
     out.push_str("<c:plotArea>");
     out.push_str(&layout_xml(spec.plot_area_layout.as_ref(), true));
@@ -346,6 +376,19 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     if let Some(view) = &spec.view_3d {
         check_view_3d(spec, primary, view)?;
     }
+    if let Family::Surface { wireframe, .. } = primary.family {
+        if spec.data_labels.is_some() {
+            return unsupported(format!("data labels on {:?}", primary.kind));
+        }
+        if wireframe && !spec.surface_bands.is_empty() {
+            return unsupported(format!("band colours on {:?}", primary.kind));
+        }
+    } else if !spec.surface_bands.is_empty() {
+        return unsupported(format!("surface band colours on {:?}", primary.kind));
+    }
+    for color in &spec.surface_bands {
+        check_color(color)?;
+    }
     for layout in [&spec.plot_area_layout, &spec.legend_layout]
         .into_iter()
         .flatten()
@@ -357,7 +400,7 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             return unsupported("a hidden legend entry with no legend".to_string());
         }
         // A pie's entries are its points, whose count lives in the sheet.
-        if !is_round(primary.family) {
+        if !is_round(primary.family) && !matches!(primary.family, Family::Surface { .. }) {
             let count: usize = plots.iter().map(|plot| plot.series.len()).sum();
             for &index in &spec.hidden_legend_entries {
                 check_range(
@@ -625,7 +668,31 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     Ok(())
 }
 
+/// A surface series is a name, categories and values: its colours come from
+/// the value bands, and Excel has nowhere to put anything else.
+fn check_surface_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
+    let extras = [
+        ("a colour", series.color.is_some()),
+        ("a fill", series.fill.is_some()),
+        ("a line width", series.line_width_pt.is_some()),
+        ("smoothing", series.smooth),
+        ("a marker", series.marker.is_some()),
+        ("point formats", !series.points.is_empty()),
+        ("point labels", !series.point_labels.is_empty()),
+        ("error bars", !series.error_bars.is_empty()),
+        ("trendlines", !series.trendlines.is_empty()),
+        ("a label range", series.label_range.is_some()),
+    ];
+    match extras.iter().find(|(_, present)| *present) {
+        Some((what, _)) => unsupported(format!("{what} on {:?}", plot.kind)),
+        None => Ok(()),
+    }
+}
+
 fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
+    if matches!(plot.family, Family::Surface { .. }) {
+        check_surface_series(plot, series)?;
+    }
     if let Some(color) = &series.color {
         check_color(color)?;
     }
@@ -692,6 +759,7 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
                 Family::Pie
                 | Family::Doughnut
                 | Family::OfPie { .. }
+                | Family::Surface { .. }
                 | Family::Radar { .. }
                 | Family::Stock { .. } => false,
             };
@@ -713,7 +781,8 @@ fn check_error_bars(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartErro
         return unsupported(format!("error bars on a 3-D {:?}", plot.kind));
     }
     let has_x = matches!(plot.family, Family::Scatter | Family::Bubble);
-    if is_round(plot.family) || matches!(plot.family, Family::Radar { .. }) {
+    if is_round(plot.family) || matches!(plot.family, Family::Radar { .. } | Family::Surface { .. })
+    {
         return unsupported(format!("error bars on {:?}", plot.kind));
     }
     let mut seen = [false; 2];
@@ -1061,6 +1130,9 @@ fn label_positions(plot: &PlotRef<'_>) -> &'static [DataLabelPosition] {
     if plot.three_d && plot.family != Family::Pie {
         return &[];
     }
+    if matches!(plot.family, Family::Surface { .. }) {
+        return &[];
+    }
     let family = plot.family;
     match family {
         Family::Bar {
@@ -1073,7 +1145,9 @@ fn label_positions(plot: &PlotRef<'_>) -> &'static [DataLabelPosition] {
         }
         Family::Pie | Family::OfPie { .. } => &[Center, InsideEnd, OutsideEnd, BestFit],
         // No position element is legal on these.
-        Family::Area { .. } | Family::Doughnut | Family::Radar { .. } => &[],
+        Family::Area { .. } | Family::Doughnut | Family::Surface { .. } | Family::Radar { .. } => {
+            &[]
+        }
     }
 }
 
@@ -1100,6 +1174,33 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
         .unwrap_or_default();
     let (category_id, value_id) = plot.axis_ids();
     let axes = format!(r#"<c:axId val="{category_id}"/><c:axId val="{value_id}"/>"#);
+    if let Family::Surface { wireframe, contour } = plot.family {
+        let tag = if contour {
+            "surfaceChart"
+        } else {
+            "surface3DChart"
+        };
+        let bands = if spec.surface_bands.is_empty() {
+            String::new()
+        } else {
+            let items: String = spec
+                .surface_bands
+                .iter()
+                .enumerate()
+                .map(|(index, color)| {
+                    format!(
+                        r#"<c:bandFmt><c:idx val="{index}"/><c:spPr>{}</c:spPr></c:bandFmt>"#,
+                        solid(color)
+                    )
+                })
+                .collect();
+            format!("<c:bandFmts>{items}</c:bandFmts>")
+        };
+        return format!(
+            r#"<c:{tag}><c:wireframe val="{}"/>{series}{bands}{axes}<c:axId val="{SERIES_AXIS_ID}"/></c:{tag}>"#,
+            i32::from(wireframe)
+        );
+    }
     if let (true, Some(view)) = (plot.three_d, &spec.view_3d) {
         // A 3-D chart names a third axis: the depth axis, or the unused `0`
         // Excel writes when there is none.
@@ -1174,6 +1275,8 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             };
             format!(r#"<c:pieChart><c:varyColors val="1"/>{series}{labels}{angle}</c:pieChart>"#)
         }
+        // Written above, before the 3-D branch.
+        Family::Surface { .. } => String::new(),
         Family::Doughnut => format!(
             r#"<c:doughnutChart><c:varyColors val="1"/>{series}{labels}<c:firstSliceAng val="{angle}"/><c:holeSize val="{hole}"/></c:doughnutChart>"#,
             angle = spec.first_slice_angle,
@@ -1279,7 +1382,8 @@ fn plot_3d_xml(
 /// `<c:view3D>` and the floor and walls that follow it.
 fn view_3d_xml(view: &View3D, family: Family) -> String {
     let pie = family == Family::Pie;
-    let right_angle = view.right_angle_axes.unwrap_or(!pie);
+    let surface = matches!(family, Family::Surface { .. });
+    let right_angle = view.right_angle_axes.unwrap_or(!pie && !surface);
     let rot_x = view.rotation_x.unwrap_or(if pie { 30 } else { 15 });
     let rot_y = view.rotation_y.unwrap_or(if pie { 0 } else { 20 });
     let height = view
@@ -1328,7 +1432,8 @@ fn series_axis_xml() -> String {
 fn check_view_3d(spec: &ChartSpec, primary: &PlotRef<'_>, view: &View3D) -> Result<(), ChartError> {
     let pie = primary.family == Family::Pie;
     let bar = matches!(primary.family, Family::Bar { .. });
-    if !(bar || pie || matches!(primary.family, Family::Line | Family::Area { .. })) {
+    let surface = matches!(primary.family, Family::Surface { contour: false, .. });
+    if !(bar || pie || surface || matches!(primary.family, Family::Line | Family::Area { .. })) {
         return unsupported(format!("a 3-D view on {:?}", primary.kind));
     }
     if !spec.extra_plots.is_empty() {
@@ -1349,6 +1454,9 @@ fn check_view_3d(spec: &ChartSpec, primary: &PlotRef<'_>, view: &View3D) -> Resu
     }
     if view.right_angle_axes == Some(true) && view.perspective.is_some() {
         return unsupported("a 3-D perspective with right-angle axes".to_string());
+    }
+    if surface && view.gap_depth.is_some() {
+        return unsupported("a gap depth on a surface".to_string());
     }
     if pie
         && (view.right_angle_axes == Some(true)
@@ -1756,7 +1864,9 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             .or_else(|| color.map(solid))
             .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
             .unwrap_or_default(),
-        Family::Pie | Family::Doughnut | Family::OfPie { .. } => String::new(),
+        Family::Pie | Family::Doughnut | Family::OfPie { .. } | Family::Surface { .. } => {
+            String::new()
+        }
         Family::Stock { open } => {
             // The high-low line (and bars) draw the chart; the series' own
             // lines are switched off. A high-low-close chart marks the close
@@ -2251,6 +2361,9 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
                 ..Axis::default().hidden()
             },
         ));
+    }
+    if matches!(plots[0].family, Family::Surface { .. }) {
+        out.push_str(&series_axis_xml());
     }
     if let (true, Some(view)) = (plots[0].three_d, &spec.view_3d) {
         if plots[0].has_depth_axis(view) {
