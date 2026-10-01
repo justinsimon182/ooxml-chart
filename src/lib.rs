@@ -56,11 +56,11 @@ pub use drawing::{
 pub use error::ChartError;
 pub use metrics::{two_cell_anchor, CellAnchor, RowMetrics, TwoCellAnchor, UnknownHeight};
 pub use spec::{
-    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
-    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Gradient,
-    GradientStop, LabelField, LabelPart, Layout, LegendPosition, MarkerSymbol, OfPie, OfPieSplit,
-    Paint, Pattern, PatternKind, Plot, PointFormat, PointLabel, Position, Series, SeriesName,
-    TextStyle, TickLabels, TickMark, Trendline, TrendlineKind,
+    AreaStyle, Axis, BarShape, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels,
+    DataTable, DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
+    Gradient, GradientStop, LabelField, LabelPart, Layout, LegendPosition, MarkerSymbol, OfPie,
+    OfPieSplit, Paint, Pattern, PatternKind, Plot, PointFormat, PointLabel, Position, Series,
+    SeriesName, TextStyle, TickLabels, TickMark, Trendline, TrendlineKind, View3D,
 };
 pub use template::TemplateChart;
 

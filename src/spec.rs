@@ -1964,6 +1964,169 @@ impl PointLabel {
     }
 }
 
+/// The shape of a 3-D bar or column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum BarShape {
+    /// A box (Excel's default).
+    Box,
+    /// A cylinder.
+    Cylinder,
+    /// A cone, narrowing to its own value.
+    Cone,
+    /// A cone, narrowing to the largest value on the chart.
+    ConeToMax,
+    /// A pyramid, narrowing to its own value.
+    Pyramid,
+    /// A pyramid, narrowing to the largest value on the chart.
+    PyramidToMax,
+}
+
+impl BarShape {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Box => "box",
+            Self::Cylinder => "cylinder",
+            Self::Cone => "cone",
+            Self::ConeToMax => "coneToMax",
+            Self::Pyramid => "pyramid",
+            Self::PyramidToMax => "pyramidToMax",
+        }
+    }
+}
+
+/// How a 3-D chart is viewed, set with [`ChartSpec::view_3d`].
+///
+/// Whatever is left unset takes Excel's own default for the kind: a bar,
+/// column, line or area chart is turned 15 degrees up and 20 around with
+/// right-angle axes; a pie is tilted 30 degrees with a perspective of 30.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct View3D {
+    /// Tilt up or down, -90 to 90 degrees.
+    pub rotation_x: Option<i16>,
+    /// Turn around the vertical, 0 to 360 degrees.
+    pub rotation_y: Option<u16>,
+    /// Perspective, 0 to 240. Needs `right_angle_axes` off.
+    pub perspective: Option<u8>,
+    /// Keep the axes at right angles. Not on a pie.
+    pub right_angle_axes: Option<bool>,
+    /// Height as a percentage of the base, 5 to 500.
+    pub height_percent: Option<u16>,
+    /// Depth as a percentage of the base, 20 to 2000.
+    pub depth_percent: Option<u16>,
+    /// Gap between series in depth, as a percentage, 0 to 500. Not on a pie.
+    pub gap_depth: Option<u16>,
+    /// Shape of a bar or column. Bar and column only.
+    pub bar_shape: Option<BarShape>,
+    /// Put each series of a clustered bar or column in its own row of depth,
+    /// with a depth axis. Clustered bar and column only.
+    pub depth_axis: bool,
+    /// Fill and border of the floor. Not on a pie.
+    pub floor: Option<AreaStyle>,
+    /// Fill and border of the side wall. Not on a pie.
+    pub side_wall: Option<AreaStyle>,
+    /// Fill and border of the back wall. Not on a pie.
+    pub back_wall: Option<AreaStyle>,
+}
+
+impl View3D {
+    /// Excel's default view for the kind.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Tilts the chart, -90 to 90 degrees.
+    #[must_use]
+    pub fn rotation_x(mut self, degrees: i16) -> Self {
+        self.rotation_x = Some(degrees);
+        self
+    }
+
+    /// Turns the chart, 0 to 360 degrees.
+    #[must_use]
+    pub fn rotation_y(mut self, degrees: u16) -> Self {
+        self.rotation_y = Some(degrees);
+        self
+    }
+
+    /// Sets the perspective, 0 to 240, and turns right-angle axes off.
+    #[must_use]
+    pub fn perspective(mut self, amount: u8) -> Self {
+        self.perspective = Some(amount);
+        self.right_angle_axes = Some(false);
+        self
+    }
+
+    /// Keeps the axes at right angles, or not.
+    #[must_use]
+    pub fn right_angle_axes(mut self, on: bool) -> Self {
+        self.right_angle_axes = Some(on);
+        self
+    }
+
+    /// Sets the height as a percentage of the base, 5 to 500.
+    #[must_use]
+    pub fn height_percent(mut self, percent: u16) -> Self {
+        self.height_percent = Some(percent);
+        self
+    }
+
+    /// Sets the depth as a percentage of the base, 20 to 2000.
+    #[must_use]
+    pub fn depth_percent(mut self, percent: u16) -> Self {
+        self.depth_percent = Some(percent);
+        self
+    }
+
+    /// Sets the gap between series in depth, 0 to 500 percent.
+    #[must_use]
+    pub fn gap_depth(mut self, percent: u16) -> Self {
+        self.gap_depth = Some(percent);
+        self
+    }
+
+    /// Shapes the bars or columns.
+    #[must_use]
+    pub fn bar_shape(mut self, shape: BarShape) -> Self {
+        self.bar_shape = Some(shape);
+        self
+    }
+
+    /// Gives a clustered bar or column a depth axis, one row per series.
+    #[must_use]
+    pub fn with_depth_axis(mut self) -> Self {
+        self.depth_axis = true;
+        self
+    }
+
+    /// Styles the floor.
+    #[must_use]
+    pub fn floor(mut self, style: AreaStyle) -> Self {
+        self.floor = Some(style);
+        self
+    }
+
+    /// Styles the side wall.
+    #[must_use]
+    pub fn side_wall(mut self, style: AreaStyle) -> Self {
+        self.side_wall = Some(style);
+        self
+    }
+
+    /// Styles the back wall.
+    #[must_use]
+    pub fn back_wall(mut self, style: AreaStyle) -> Self {
+        self.back_wall = Some(style);
+        self
+    }
+}
+
 /// Which points a pie-of-pie or bar-of-pie moves to its second plot.
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2188,6 +2351,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) of_pie: Option<OfPie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) view_3d: Option<View3D>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) first_slice_angle: u16,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title_style: Option<TextStyle>,
@@ -2236,6 +2401,7 @@ impl ChartSpec {
             hole_size: 50,
             stock_bars: None,
             of_pie: None,
+            view_3d: None,
             first_slice_angle: 0,
             title_style: None,
             title_position: None,
@@ -2448,6 +2614,15 @@ impl ChartSpec {
     #[must_use]
     pub fn data_labels(mut self, labels: DataLabels) -> Self {
         self.data_labels = Some(labels);
+        self
+    }
+
+    /// Draws the chart in 3-D with the given view. Works on bar, column, line,
+    /// area and pie kinds; refused on the rest, with added plots, and with
+    /// error bars, trendlines or data-label positions where Excel has none.
+    #[must_use]
+    pub fn view_3d(mut self, view: View3D) -> Self {
+        self.view_3d = Some(view);
         self
     }
 

@@ -30,6 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- 3-D charts: `ChartSpec::view_3d(View3D)` draws bar, column, line, area and
+  pie kinds in 3-D (`<c:bar3DChart>`, `line3DChart`, `area3DChart`,
+  `pie3DChart`). `View3D` sets the rotation, perspective, height and depth,
+  gap depth, bar shape (`BarShape`), an optional depth axis on a clustered bar or
+  column, and the floor and walls. Refused: other kinds, combinations, error
+  bars, trendlines and data-label positions on anything but a pie, and settings
+  that do not apply (floor on a pie, perspective with right-angle axes, ranges).
 - Pie-of-pie and bar-of-pie: `ChartKind::PieOfPie` and `ChartKind::BarOfPie`
   write `<c:ofPieChart>`. `ChartSpec::of_pie(OfPie)` chooses the split (`Auto`,
   `LastPoints`, `ValueBelow`, `PercentBelow` or custom `Points`), the second

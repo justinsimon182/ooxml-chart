@@ -20,7 +20,8 @@ does not read, write, or zip `.xlsx` packages.
 | Combination charts and a secondary value axis | Done — `Plot`, `ChartSpec::plot`; column, line and area share one category axis |
 | Stock | Done (`StockHighLowClose`, `StockOpenHighLowClose`, volume via a secondary-axis plot) |
 | Pie-of-pie, bar-of-pie | Done (`PieOfPie`, `BarOfPie`, `OfPie`) |
-| Surface, 3-D | **Open** |
+| 3-D bar, column, line, area, pie | Done (`View3D`) |
+| Surface | **Open** |
 | Combining scatter or bubble with other kinds | Done for scatter (added as a `Plot` to column, line or area); bubble cannot be combined in Excel |
 
 ## Series
@@ -85,7 +86,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 71 in all) validates against the
+date axis, and one drawing per anchor type â€” 76 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

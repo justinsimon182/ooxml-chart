@@ -307,6 +307,24 @@ fn of_pie_settings_survive_a_round_trip() {
 }
 
 #[test]
+fn a_3d_view_survives_a_round_trip() {
+    use ooxml_chart::{AreaStyle, BarShape, View3D};
+    let spec = ChartSpec::new(ChartKind::ColumnClustered)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
+        .view_3d(
+            View3D::new()
+                .rotation_x(20)
+                .perspective(40)
+                .bar_shape(BarShape::ConeToMax)
+                .floor(AreaStyle::new().fill("F8F6F0")),
+        );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    assert!(json.contains("cone_to_max"), "{json}");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

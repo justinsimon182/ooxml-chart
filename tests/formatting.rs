@@ -2852,3 +2852,246 @@ mod of_pie {
         assert!(matches!(refused(bars), ChartError::Unsupported { .. }));
     }
 }
+
+// --- 3-D charts ---------------------------------------------------------------------
+
+mod three_d {
+    use super::*;
+    use ooxml_chart::{BarShape, DataLabelPosition, DataLabels, View3D};
+
+    fn spec(kind: ChartKind) -> ChartSpec {
+        ChartSpec::new(kind).series(series()).view_3d(View3D::new())
+    }
+
+    #[test]
+    fn a_3d_column_takes_excels_default_view_and_a_zero_third_axis() {
+        let xml = render(spec(ChartKind::ColumnClustered).title("T"));
+        assert!(
+            xml.contains(r#"</c:title><c:autoTitleDeleted val="0"/><c:view3D><c:rotX val="15"/><c:rotY val="20"/><c:rAngAx val="1"/></c:view3D><c:plotArea>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<c:bar3DChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/><c:ser>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<c:gapWidth val="150"/><c:gapDepth val="150"/><c:axId val="111"/><c:axId val="222"/><c:axId val="0"/></c:bar3DChart>"#),
+            "{xml}"
+        );
+        assert!(!xml.contains("serAx"), "{xml}");
+    }
+
+    #[test]
+    fn a_3d_pie_defaults_to_a_tilt_and_perspective_and_has_no_axes() {
+        let xml = render(spec(ChartKind::Pie));
+        assert!(
+            xml.contains(r#"<c:view3D><c:rotX val="30"/><c:rotY val="0"/><c:rAngAx val="0"/><c:perspective val="30"/></c:view3D>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains("<c:pie3DChart><c:varyColors val=\"1\"/><c:ser>"),
+            "{xml}"
+        );
+        assert!(!xml.contains("axId"), "{xml}");
+    }
+
+    #[test]
+    fn a_3d_line_and_a_standard_area_get_a_depth_axis() {
+        for (kind, tag) in [
+            (ChartKind::Line, "line3DChart"),
+            (ChartKind::Area, "area3DChart"),
+        ] {
+            let xml = render(spec(kind));
+            assert!(xml.contains(&format!("<c:{tag}>")), "{xml}");
+            assert!(
+                xml.contains(r#"<c:axId val="111"/><c:axId val="222"/><c:axId val="555"/>"#),
+                "{xml}"
+            );
+            assert!(xml.contains(r#"<c:serAx><c:axId val="555"/>"#), "{xml}");
+            assert!(xml.contains(r#"<c:crossAx val="222"/>"#), "{xml}");
+        }
+    }
+
+    #[test]
+    fn a_stacked_area_has_no_depth_axis() {
+        let xml = render(spec(ChartKind::AreaStacked));
+        assert!(
+            xml.contains(r#"<c:axId val="222"/><c:axId val="0"/></c:area3DChart>"#),
+            "{xml}"
+        );
+        assert!(!xml.contains("serAx"), "{xml}");
+    }
+
+    #[test]
+    fn a_depth_axis_makes_a_clustered_column_standard_with_a_series_axis() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series())
+                .view_3d(View3D::new().with_depth_axis()),
+        );
+        assert!(xml.contains(r#"<c:grouping val="standard"/>"#), "{xml}");
+        assert!(
+            xml.contains(r#"<c:axId val="555"/></c:bar3DChart>"#),
+            "{xml}"
+        );
+        assert!(xml.contains("<c:serAx>"), "{xml}");
+    }
+
+    #[test]
+    fn a_custom_view_writes_every_setting_in_schema_order() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line).series(series()).view_3d(
+                View3D::new()
+                    .rotation_x(-20)
+                    .rotation_y(45)
+                    .height_percent(80)
+                    .depth_percent(120)
+                    .perspective(60)
+                    .gap_depth(10),
+            ),
+        );
+        assert!(
+            xml.contains(r#"<c:view3D><c:rotX val="-20"/><c:hPercent val="80"/><c:rotY val="45"/><c:depthPercent val="120"/><c:rAngAx val="0"/><c:perspective val="60"/></c:view3D>"#),
+            "{xml}"
+        );
+        assert!(xml.contains(r#"<c:gapDepth val="10"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn a_bar_shape_follows_the_gap_depth() {
+        let xml = render(
+            ChartSpec::new(ChartKind::BarClustered)
+                .series(series())
+                .view_3d(View3D::new().bar_shape(BarShape::PyramidToMax)),
+        );
+        assert!(
+            xml.contains(r#"<c:gapDepth val="150"/><c:shape val="pyramidToMax"/><c:axId"#),
+            "{xml}"
+        );
+        assert!(xml.contains(r#"<c:barDir val="bar"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn floor_and_walls_follow_the_view_and_precede_the_plot_area() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series())
+                .view_3d(
+                    View3D::new()
+                        .floor(AreaStyle::new().fill("F8F6F0"))
+                        .side_wall(AreaStyle::new().fill("FFFFFF"))
+                        .back_wall(AreaStyle::new().fill("010102")),
+                ),
+        );
+        assert!(
+            xml.contains(r#"</c:view3D><c:floor><c:thickness val="0"/><c:spPr><a:solidFill><a:srgbClr val="F8F6F0"/></a:solidFill></c:spPr></c:floor><c:sideWall><c:thickness val="0"/>"#),
+            "{xml}"
+        );
+        assert!(xml.find("<c:backWall>") < xml.find("<c:plotArea>"), "{xml}");
+    }
+
+    #[test]
+    fn a_chart_without_a_view_is_unchanged() {
+        let xml = render(ChartSpec::new(ChartKind::ColumnClustered).series(series()));
+        assert!(!xml.contains("3D") && !xml.contains("view3D"), "{xml}");
+    }
+
+    #[test]
+    fn a_3d_pie_keeps_its_label_positions_and_points() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Pie)
+                .series(series().with_point(1, PointFormat::new().explosion(10)))
+                .data_labels(DataLabels::values().at(DataLabelPosition::OutsideEnd))
+                .view_3d(View3D::new()),
+        );
+        assert!(xml.contains(r#"<c:dLblPos val="outEnd"/>"#), "{xml}");
+        assert!(xml.contains(r#"<c:explosion val="10"/>"#), "{xml}");
+    }
+
+    #[test]
+    fn unsupported_kinds_and_combinations_are_refused() {
+        for spec in [
+            spec(ChartKind::Scatter),
+            spec(ChartKind::Doughnut),
+            spec(ChartKind::Radar),
+            spec(ChartKind::Bubble),
+            spec(ChartKind::PieOfPie),
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series())
+                .plot(Plot::new(ChartKind::Line).series(series()))
+                .view_3d(View3D::new()),
+        ] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+
+    #[test]
+    fn what_excel_does_not_offer_in_3d_is_refused() {
+        let with_bars = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series().with_error_bars(ooxml_chart::ErrorBars::new(
+                ooxml_chart::ErrorAmount::Fixed(1.0),
+            )))
+            .view_3d(View3D::new());
+        let with_trend = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series().with_trendline(ooxml_chart::Trendline::new(
+                ooxml_chart::TrendlineKind::Linear,
+            )))
+            .view_3d(View3D::new());
+        assert!(matches!(refused(with_bars), ChartError::Unsupported { .. }));
+        assert!(matches!(
+            refused(with_trend),
+            ChartError::Unsupported { .. }
+        ));
+        let positioned = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series())
+            .data_labels(DataLabels::values().at(DataLabelPosition::OutsideEnd))
+            .view_3d(View3D::new())
+            .render();
+        assert!(matches!(
+            positioned,
+            Err(ChartError::InvalidDataLabelPosition { .. })
+        ));
+    }
+
+    #[test]
+    fn bad_views_are_refused() {
+        let bad = [
+            View3D::new().rotation_x(91),
+            View3D::new().rotation_x(-91),
+            View3D::new().rotation_y(361),
+            View3D::new().perspective(241),
+            View3D::new().height_percent(4),
+            View3D::new().depth_percent(19),
+            View3D::new().gap_depth(501),
+            View3D::new().perspective(30).right_angle_axes(true),
+            View3D::new().bar_shape(BarShape::Cone),
+            View3D::new().with_depth_axis(),
+        ];
+        for view in bad {
+            let result = ChartSpec::new(ChartKind::Line)
+                .series(series())
+                .view_3d(view)
+                .render();
+            assert!(result.is_err());
+        }
+        let on_pie = [
+            View3D::new().right_angle_axes(true),
+            View3D::new().gap_depth(10),
+            View3D::new().floor(AreaStyle::new().fill("FFFFFF")),
+        ];
+        for view in on_pie {
+            let result = ChartSpec::new(ChartKind::Pie)
+                .series(series())
+                .view_3d(view)
+                .render();
+            assert!(matches!(result, Err(ChartError::Unsupported { .. })));
+        }
+        let stacked_depth = ChartSpec::new(ChartKind::ColumnStacked)
+            .series(series())
+            .view_3d(View3D::new().with_depth_axis());
+        assert!(matches!(
+            refused(stacked_depth),
+            ChartError::Unsupported { .. }
+        ));
+    }
+}
