@@ -30,6 +30,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Pictures and text boxes in a drawing: `Picture`, `TextBox` and `DrawingObject`,
+  written by `drawing_part_objects` / `drawing_object_xml` on any anchor type
+  beside charts. `drawing_relationships_typed` and `IMAGE_RELATIONSHIP_TYPE`
+  cover the relationships. The image part itself stays yours to package.
+- `scripts/excel_roundtrip.py` opens every gallery part in a real desktop Excel
+  (Windows, COM) and fails if a chart or shape does not load. All 82 parts load.
 - `Axis::display_units_caption` words the caption beside a scaled axis
   yourself. Refused without a display unit or with empty text.
 - Surface charts: `ChartKind::Surface`, `SurfaceWireframe`, `Contour` and

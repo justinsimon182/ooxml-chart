@@ -49,9 +49,11 @@ mod template;
 mod xml;
 
 pub use drawing::{
-    anchor_xml, anchor_xml_for, drawing_content_types_override, drawing_part, drawing_part_with,
-    drawing_relationships, worksheet_drawing_element, worksheet_drawing_relationship, Anchor,
-    GraphicFrame, CHART_RELATIONSHIP_TYPE, DRAWING_CONTENT_TYPE, DRAWING_RELATIONSHIP_TYPE,
+    anchor_xml, anchor_xml_for, drawing_content_types_override, drawing_object_xml, drawing_part,
+    drawing_part_objects, drawing_part_with, drawing_relationships, drawing_relationships_typed,
+    worksheet_drawing_element, worksheet_drawing_relationship, Anchor, DrawingObject, GraphicFrame,
+    Picture, TextBox, CHART_RELATIONSHIP_TYPE, DRAWING_CONTENT_TYPE, DRAWING_RELATIONSHIP_TYPE,
+    IMAGE_RELATIONSHIP_TYPE,
 };
 pub use error::ChartError;
 pub use metrics::{two_cell_anchor, CellAnchor, RowMetrics, TwoCellAnchor, UnknownHeight};

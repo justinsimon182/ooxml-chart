@@ -219,6 +219,33 @@ fn run() {
         fs::write(dir.join(format!("{file}.xml")), part).expect("write drawing");
     }
 
+    let objects = [
+        (
+            "drawing_picture",
+            ooxml_chart::DrawingObject::Picture(
+                ooxml_chart::Picture::new(3, "Picture 1", "rId2").description("Logo"),
+            ),
+        ),
+        (
+            "drawing_text_box",
+            ooxml_chart::DrawingObject::TextBox(ooxml_chart::TextBox::new(
+                4,
+                "TextBox 1",
+                "Source: field survey\nQ1 to Q4",
+            )),
+        ),
+    ];
+    for (file, object) in objects {
+        let anchor = ooxml_chart::Anchor::Absolute {
+            x_emu: 100_000,
+            y_emu: 200_000,
+            width_emu: 2_000_000,
+            height_emu: 800_000,
+        };
+        let part = ooxml_chart::drawing_part_objects(&[(anchor, object)]);
+        fs::write(dir.join(format!("{file}.xml")), part).expect("write drawing");
+    }
+
     // Features that need more than a kind.
     // A surface takes its colours from value bands, not from its series.
     let plain = |name: &str, column: &str| {

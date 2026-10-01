@@ -237,6 +237,198 @@ pub fn drawing_relationships(chart_targets: &[(String, String)]) -> Vec<u8> {
     out.into_bytes()
 }
 
+/// The relationship type a drawing uses to reach an image.
+pub const IMAGE_RELATIONSHIP_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+
+/// A picture in a drawing. The image bytes are a package part of your own
+/// (`/xl/media/image1.png`); this only points at it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Picture {
+    /// The picture's document-unique id. Excel's own numbering starts at 2.
+    pub id: u32,
+    /// The picture's name, e.g. `"Picture 1"`.
+    pub name: String,
+    /// The relationship on the drawing that reaches the image part, of type
+    /// [`IMAGE_RELATIONSHIP_TYPE`].
+    pub relationship_id: String,
+    /// Alternative text for screen readers, or `None`.
+    pub description: Option<String>,
+}
+
+impl Picture {
+    /// A picture reached by `relationship_id`, with no alternative text.
+    pub fn new(id: u32, name: impl Into<String>, relationship_id: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            relationship_id: relationship_id.into(),
+            description: None,
+        }
+    }
+
+    /// Sets the alternative text.
+    #[must_use]
+    pub fn description(mut self, text: impl Into<String>) -> Self {
+        self.description = Some(text.into());
+        self
+    }
+}
+
+/// A text box in a drawing: a rectangle holding plain text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TextBox {
+    /// The text box's document-unique id. Excel's own numbering starts at 2.
+    pub id: u32,
+    /// The text box's name, e.g. `"TextBox 1"`.
+    pub name: String,
+    /// The text. Each line becomes a paragraph.
+    pub text: String,
+}
+
+impl TextBox {
+    /// A text box holding `text`.
+    pub fn new(id: u32, name: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            text: text.into(),
+        }
+    }
+}
+
+/// Anything a drawing anchor can host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DrawingObject {
+    /// A chart.
+    Chart(GraphicFrame),
+    /// A picture.
+    Picture(Picture),
+    /// A text box.
+    TextBox(TextBox),
+}
+
+fn picture_xml(picture: &Picture) -> String {
+    let description = match &picture.description {
+        Some(text) => format!(r#" descr="{}""#, escape(text)),
+        None => String::new(),
+    };
+    format!(
+        concat!(
+            r#"<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="{id}" name="{name}"{descr}/>"#,
+            r#"<xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>"#,
+            r#"<xdr:blipFill><a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>"#,
+            r#"<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>"#,
+            r#"<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/>"#,
+        ),
+        id = picture.id,
+        name = escape(&picture.name),
+        descr = description,
+        rid = escape(&picture.relationship_id),
+    )
+}
+
+fn text_box_xml(text_box: &TextBox) -> String {
+    let paragraphs: String = text_box
+        .text
+        .split('\n')
+        .map(|line| {
+            let line = line.trim_end_matches('\r');
+            if line.is_empty() {
+                "<a:p/>".to_string()
+            } else {
+                format!("<a:p><a:r><a:t>{}</a:t></a:r></a:p>", escape(line))
+            }
+        })
+        .collect();
+    format!(
+        concat!(
+            r#"<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="{id}" name="{name}"/>"#,
+            r#"<xdr:cNvSpPr txBox="1"/></xdr:nvSpPr>"#,
+            r#"<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>"#,
+            r#"<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>"#,
+            r#"<xdr:txBody><a:bodyPr/><a:lstStyle/>{paragraphs}</xdr:txBody></xdr:sp><xdr:clientData/>"#,
+        ),
+        id = text_box.id,
+        name = escape(&text_box.name),
+        paragraphs = paragraphs,
+    )
+}
+
+/// One anchor of any type hosting any [`DrawingObject`].
+///
+/// A chart is written exactly as [`anchor_xml_for`] writes it. A picture or text
+/// box carries no `editAs`, which means `"twoCell"` on a two-cell anchor.
+#[must_use]
+pub fn drawing_object_xml(anchor: &Anchor, object: &DrawingObject) -> String {
+    let payload = match object {
+        DrawingObject::Chart(frame) => return anchor_xml_for(anchor, frame),
+        DrawingObject::Picture(picture) => picture_xml(picture),
+        DrawingObject::TextBox(text_box) => text_box_xml(text_box),
+    };
+    match anchor {
+        Anchor::TwoCell(two_cell) => format!(
+            "<xdr:twoCellAnchor>{}{}{payload}</xdr:twoCellAnchor>",
+            corner_xml("from", &two_cell.from),
+            corner_xml("to", &two_cell.to),
+        ),
+        Anchor::OneCell {
+            from,
+            width_emu,
+            height_emu,
+        } => format!(
+            r#"<xdr:oneCellAnchor>{}<xdr:ext cx="{width_emu}" cy="{height_emu}"/>{payload}</xdr:oneCellAnchor>"#,
+            corner_xml("from", from),
+        ),
+        Anchor::Absolute {
+            x_emu,
+            y_emu,
+            width_emu,
+            height_emu,
+        } => format!(
+            r#"<xdr:absoluteAnchor><xdr:pos x="{x_emu}" y="{y_emu}"/><xdr:ext cx="{width_emu}" cy="{height_emu}"/>{payload}</xdr:absoluteAnchor>"#
+        ),
+    }
+}
+
+/// A complete drawing part hosting charts, pictures and text boxes, mixed
+/// freely, in order.
+#[must_use]
+pub fn drawing_part_objects(objects: &[(Anchor, DrawingObject)]) -> Vec<u8> {
+    let mut out = String::with_capacity(512 + objects.len() * 768);
+    out.push_str(DRAWING_OPEN);
+    for (anchor, object) in objects {
+        out.push_str(&drawing_object_xml(anchor, object));
+    }
+    out.push_str("</xdr:wsDr>");
+    out.into_bytes()
+}
+
+/// A drawing's `_rels` part for targets of any kind: each entry is
+/// `(id, relationship type, target)`, e.g. [`CHART_RELATIONSHIP_TYPE`] or
+/// [`IMAGE_RELATIONSHIP_TYPE`].
+#[must_use]
+pub fn drawing_relationships_typed(entries: &[(String, &str, String)]) -> Vec<u8> {
+    let mut out = String::with_capacity(256 + entries.len() * 160);
+    out.push_str(concat!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#,
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
+    ));
+    for (id, kind, target) in entries {
+        out.push_str(&format!(
+            r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
+            escape(id),
+            escape(kind),
+            escape(target),
+        ));
+    }
+    out.push_str("</Relationships>");
+    out.into_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

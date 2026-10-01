@@ -565,3 +565,118 @@ fn anchor_types_can_share_a_drawing() {
     );
     assert!(out.contains("<xdr:absoluteAnchor>"), "{out}");
 }
+
+// --- pictures and text boxes ------------------------------------------------
+
+mod other_objects {
+    use super::*;
+    use ooxml_chart::{
+        drawing_part_objects, drawing_relationships_typed, DrawingObject, Picture, TextBox,
+        TwoCellAnchor, CHART_RELATIONSHIP_TYPE, IMAGE_RELATIONSHIP_TYPE,
+    };
+
+    fn part(anchor: Anchor, object: DrawingObject) -> String {
+        let bytes = drawing_part_objects(&[(anchor, object)]);
+        String::from_utf8(bytes).expect("utf-8")
+    }
+
+    #[test]
+    fn a_picture_points_at_its_image_and_carries_alt_text() {
+        let xml = part(
+            Anchor::OneCell {
+                from: corner(),
+                width_emu: 100,
+                height_emu: 50,
+            },
+            DrawingObject::Picture(Picture::new(3, "Logo", "rId7").description("A <logo>")),
+        );
+        assert!(
+            xml.contains(r#"<xdr:oneCellAnchor><xdr:from><xdr:col>3</xdr:col>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<xdr:ext cx="100" cy="50"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="3" name="Logo" descr="A &lt;logo&gt;"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<a:blip r:embed="rId7"/><a:stretch><a:fillRect/></a:stretch>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.ends_with("</xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_text_box_makes_a_paragraph_per_line_and_escapes_text() {
+        let xml = part(
+            Anchor::Absolute {
+                x_emu: 1,
+                y_emu: 2,
+                width_emu: 3,
+                height_emu: 4,
+            },
+            DrawingObject::TextBox(TextBox::new(4, "Note", "a & b\n\nc")),
+        );
+        assert!(
+            xml.contains(r#"<xdr:absoluteAnchor><xdr:pos x="1" y="2"/><xdr:ext cx="3" cy="4"/><xdr:sp macro="" textlink="">"#),
+            "{xml}"
+        );
+        assert!(xml.contains(r#"<xdr:cNvSpPr txBox="1"/>"#), "{xml}");
+        assert!(
+            xml.contains("<a:p><a:r><a:t>a &amp; b</a:t></a:r></a:p><a:p/><a:p><a:r><a:t>c</a:t></a:r></a:p></xdr:txBody>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_chart_object_is_written_as_before_and_objects_mix() {
+        let two = TwoCellAnchor {
+            from: corner(),
+            to: CellAnchor {
+                col: 9,
+                col_offset_emu: 0,
+                row: 20,
+                row_offset_emu: 0,
+            },
+        };
+        let plain = drawing_part_with(&[(Anchor::TwoCell(two), frame())]);
+        let objects = drawing_part_objects(&[
+            (Anchor::TwoCell(two), DrawingObject::Chart(frame())),
+            (
+                Anchor::TwoCell(two),
+                DrawingObject::Picture(Picture::new(5, "P", "rId2")),
+            ),
+        ]);
+        let objects = String::from_utf8(objects).expect("utf-8");
+        let plain = String::from_utf8(plain).expect("utf-8");
+        let chart_only = plain.trim_end_matches("</xdr:wsDr>");
+        assert!(objects.starts_with(chart_only), "{objects}");
+        assert_eq!(objects.matches("<xdr:clientData/>").count(), 2, "{objects}");
+    }
+
+    #[test]
+    fn typed_relationships_carry_each_kind() {
+        let rels = drawing_relationships_typed(&[
+            (
+                "rId1".into(),
+                CHART_RELATIONSHIP_TYPE,
+                "../charts/chart1.xml".into(),
+            ),
+            (
+                "rId2".into(),
+                IMAGE_RELATIONSHIP_TYPE,
+                "../media/image1.png".into(),
+            ),
+        ]);
+        let rels = String::from_utf8(rels).expect("utf-8");
+        assert!(
+            rels.contains(&format!(
+                r#"Type="{IMAGE_RELATIONSHIP_TYPE}" Target="../media/image1.png""#
+            )),
+            "{rels}"
+        );
+        assert_eq!(rels.matches("<Relationship ").count(), 2, "{rels}");
+    }
+}

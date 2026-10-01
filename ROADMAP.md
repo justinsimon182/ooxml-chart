@@ -70,7 +70,7 @@ does not read, write, or zip `.xlsx` packages.
 | `twoCellAnchor`, `oneCellAnchor`, `absoluteAnchor` | Done |
 | `[Content_Types].xml` entry for a chart part | Done — `ChartPart::content_types_override` |
 | Drawing content-type and worksheet-relationship constants | Done (`DRAWING_CONTENT_TYPE`, `worksheet_drawing_relationship`) |
-| Drawings hosting things other than charts | **Open** — out of scope unless asked for |
+| Drawings hosting pictures and text boxes | Done (`DrawingObject`, `Picture`, `TextBox`, `drawing_part_objects`) |
 
 ## Crate
 
@@ -81,12 +81,12 @@ does not read, write, or zip `.xlsx` packages.
 | CI: fmt, clippy, tests, docs, MSRV | Done — `.github/workflows/ci.yml` |
 | Template mode: swap axis titles and series names | Done — `with_axis_title`, `with_series_name`; literal names and plain-text titles only |
 | Validate reference syntax (`Sheet!$A$1:$B$2`) | Done (`ChartError::InvalidReference`; shape only, quoting and defined names accepted) |
-| Round-trip check against a real Excel install | **Open** — no Excel in CI; see below |
+| Round-trip check against a real Excel install | Done — `scripts/excel_roundtrip.py`, manual (no Excel in CI) |
 
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 80 in all) validates against the
+date axis, and one drawing per anchor type â€” 82 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
@@ -106,7 +106,7 @@ Excel is the signal to add a test for what it complained about.
 | --- | --- |
 | Schema validation of the gallery | Done â€” manual script |
 | Schema validation in CI | Done â€” `schema` job, schemas vendored in `scripts/schemas` |
-| Round-trip through a real Excel install | **Open** |
+| Round-trip through a real Excel install | Done — `scripts/excel_roundtrip.py`; Windows with desktop Excel, run by hand |
 
 ## Ground rules for new features
 
