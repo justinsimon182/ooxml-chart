@@ -30,6 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Stock charts: `ChartKind::StockHighLowClose` (three series) and
+  `ChartKind::StockOpenHighLowClose` (four), written as `<c:stockChart>` with
+  hi-low lines, up/down bars on the latter (`ChartSpec::stock_bars` colours
+  them), series lines switched off and a tick on the close of a high-low-close
+  chart. A stock plot can be added to a column chart on the secondary axis for a
+  volume chart, and takes a date axis. Refused: the wrong number of series, bar
+  colours without an open-high-low-close plot, trendlines on a stock series.
 - Scatter combined with column, line and area: add a `Scatter` or `ScatterLines`
   `Plot` to such a chart, on the primary axes (x values are positions on the
   category axis) or on the secondary axis (its own pair of value axes, x hidden,

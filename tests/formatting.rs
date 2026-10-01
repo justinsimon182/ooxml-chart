@@ -2567,3 +2567,141 @@ mod scatter_combo {
         assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
     }
 }
+
+// --- Stock charts -------------------------------------------------------------------
+
+mod stock_charts {
+    use super::*;
+
+    fn named(name: &str, column: &str) -> Series {
+        Series::new(
+            SeriesName::Literal(name.into()),
+            format!("'S'!${column}$3:${column}$5"),
+        )
+        .with_categories("'S'!$A$3:$A$5")
+    }
+
+    fn hlc() -> ChartSpec {
+        ChartSpec::new(ChartKind::StockHighLowClose)
+            .series(named("High", "B"))
+            .series(named("Low", "C"))
+            .series(named("Close", "D"))
+    }
+
+    fn ohlc() -> ChartSpec {
+        ChartSpec::new(ChartKind::StockOpenHighLowClose)
+            .series(named("Open", "B"))
+            .series(named("High", "C"))
+            .series(named("Low", "D"))
+            .series(named("Close", "E"))
+    }
+
+    #[test]
+    fn high_low_close_has_hi_low_lines_and_no_bars() {
+        let xml = render(hlc());
+        assert_eq!(xml.matches("<c:ser>").count(), 3, "{xml}");
+        assert!(xml.contains("<c:stockChart><c:ser>"), "{xml}");
+        assert!(
+            xml.contains(
+                r#"</c:ser><c:hiLowLines/><c:axId val="111"/><c:axId val="222"/></c:stockChart>"#
+            ),
+            "{xml}"
+        );
+        assert!(!xml.contains("upDownBars"), "{xml}");
+    }
+
+    #[test]
+    fn the_series_lines_are_off_and_only_the_close_has_a_tick() {
+        let xml = render(hlc());
+        assert_eq!(
+            xml.matches(r#"<a:ln w="19050" cap="rnd"><a:noFill/><a:round/></a:ln>"#)
+                .count(),
+            3,
+            "{xml}"
+        );
+        assert_eq!(xml.matches(r#"<c:symbol val="none"/>"#).count(), 2, "{xml}");
+        assert_eq!(
+            xml.matches(r#"<c:marker><c:symbol val="dash"/><c:size val="7"/></c:marker>"#)
+                .count(),
+            1,
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn open_high_low_close_adds_up_down_bars_after_the_hi_low_lines() {
+        let xml = render(ohlc());
+        assert_eq!(xml.matches("<c:ser>").count(), 4, "{xml}");
+        assert!(
+            xml.contains(r#"<c:hiLowLines/><c:upDownBars><c:gapWidth val="150"/><c:upBars/><c:downBars/></c:upDownBars><c:axId"#),
+            "{xml}"
+        );
+        assert!(!xml.contains(r#"val="dash""#), "{xml}");
+    }
+
+    #[test]
+    fn bar_colours_and_gap_width_are_written() {
+        let xml = render(ohlc().stock_bars("0090b2", "8E0DD1").gap_width(80));
+        assert!(
+            xml.contains(r#"<c:upDownBars><c:gapWidth val="80"/><c:upBars><c:spPr><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></c:spPr></c:upBars><c:downBars><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></c:spPr></c:downBars>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn the_wrong_number_of_series_is_refused() {
+        let two = ChartSpec::new(ChartKind::StockHighLowClose)
+            .series(named("A", "B"))
+            .series(named("B", "C"));
+        let four = ohlc().series(named("Extra", "F"));
+        let three = ChartSpec::new(ChartKind::StockOpenHighLowClose)
+            .series(named("A", "B"))
+            .series(named("B", "C"))
+            .series(named("C", "D"));
+        for spec in [two, four, three] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+
+    #[test]
+    fn bar_colours_need_an_ohlc_plot_and_valid_hex() {
+        assert!(matches!(
+            refused(hlc().stock_bars("000000", "FFFFFF")),
+            ChartError::Unsupported { .. }
+        ));
+        assert!(matches!(
+            refused(ohlc().stock_bars("nope", "FFFFFF")),
+            ChartError::InvalidColor(_)
+        ));
+    }
+
+    #[test]
+    fn a_stock_plot_on_the_secondary_axis_follows_a_volume_column() {
+        let volume = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(named("Volume", "F"))
+            .plot(
+                Plot::new(ChartKind::StockOpenHighLowClose)
+                    .series(named("Open", "B"))
+                    .series(named("High", "C"))
+                    .series(named("Low", "D"))
+                    .series(named("Close", "E"))
+                    .on_secondary_axis(),
+            );
+        let xml = render(volume);
+        assert!(
+            xml.find("<c:barChart>") < xml.find("<c:stockChart>"),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<c:axId val="333"/><c:axId val="444"/></c:stockChart>"#),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<c:catAx>").count(), 2, "{xml}");
+    }
+
+    #[test]
+    fn a_date_axis_is_allowed() {
+        let xml = render(hlc().category_axis(Axis::default().dates(ooxml_chart::DateUnit::Days)));
+        assert!(xml.contains("<c:dateAx>"), "{xml}");
+    }
+}

@@ -18,7 +18,8 @@ does not read, write, or zip `.xlsx` packages.
 | Pie, doughnut (`hole_size`, `first_slice_angle`) | Done |
 | Radar, filled radar | Done |
 | Combination charts and a secondary value axis | Done — `Plot`, `ChartSpec::plot`; column, line and area share one category axis |
-| Stock, surface, 3-D, pie-of-pie, bar-of-pie | **Open** |
+| Stock | Done (`StockHighLowClose`, `StockOpenHighLowClose`, volume via a secondary-axis plot) |
+| Surface, 3-D, pie-of-pie, bar-of-pie | **Open** |
 | Combining scatter or bubble with other kinds | Done for scatter (added as a `Plot` to column, line or area); bubble cannot be combined in Excel |
 
 ## Series
@@ -83,7 +84,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 65 in all) validates against the
+date axis, and one drawing per anchor type â€” 68 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

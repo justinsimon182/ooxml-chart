@@ -49,6 +49,14 @@ pub enum ChartKind {
     /// series' categories reference the x values and
     /// [`Series::with_bubble_sizes`] the sizes.
     Bubble,
+    /// A stock chart of high, low and close: a vertical line from each
+    /// category's low to its high with a tick at the close. Takes exactly three
+    /// series, in that order.
+    StockHighLowClose,
+    /// A stock chart of open, high, low and close: the high-low line plus up
+    /// and down bars between open and close. Takes exactly four series, in that
+    /// order. Colour the bars with [`ChartSpec::stock_bars`].
+    StockOpenHighLowClose,
 }
 
 impl ChartKind {
@@ -2094,6 +2102,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default = "default_hole_size"))]
     pub(crate) hole_size: u8,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) stock_bars: Option<(String, String)>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) first_slice_angle: u16,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title_style: Option<TextStyle>,
@@ -2140,6 +2150,7 @@ impl ChartSpec {
             overlap: None,
             data_labels: None,
             hole_size: 50,
+            stock_bars: None,
             first_slice_angle: 0,
             title_style: None,
             title_position: None,
@@ -2352,6 +2363,15 @@ impl ChartSpec {
     #[must_use]
     pub fn data_labels(mut self, labels: DataLabels) -> Self {
         self.data_labels = Some(labels);
+        self
+    }
+
+    /// Colours the up bars (close above open) and down bars (close below open)
+    /// of an open-high-low-close stock chart, as six-digit hex. Without it
+    /// Excel's own colours apply. Refused on any other chart.
+    #[must_use]
+    pub fn stock_bars(mut self, up: impl Into<String>, down: impl Into<String>) -> Self {
+        self.stock_bars = Some((up.into(), down.into()));
         self
     }
 
