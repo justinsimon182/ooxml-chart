@@ -96,8 +96,11 @@ rule — `floor(points * 1.2)` — is wrong often enough to matter, so
 
 Clustered, stacked and percent-stacked bar and column; line with and without
 markers; area, stacked area and percent-stacked area; scatter (markers, or
-lines with markers); bubble; pie; doughnut; radar and filled radar. Column,
-line and area kinds combine on one chart, optionally with a second value axis.
+lines with markers); bubble; pie and doughnut; pie-of-pie and bar-of-pie; radar
+and filled radar; stock (high-low-close, open-high-low-close, and with volume);
+surface and contour, solid or wireframe. Bar, column, line, area and pie kinds
+also draw in 3-D with `view_3d`. Column, line, area, scatter and bubble kinds
+combine on one chart, optionally with a second value axis.
 `ChartKind` is `#[non_exhaustive]`; more can be added without a breaking
 change.
 
@@ -186,7 +189,8 @@ ooxml-chart = { version = "0.1", features = ["serde"] }
 A parsed spec is validated when rendered, exactly like one built in code.
 
 Anchors other than `twoCellAnchor` are available through `Anchor` and
-`drawing_part_with`.
+`drawing_part_with`. Pictures and text boxes can share a drawing with charts
+through `DrawingObject` and `drawing_part_objects`.
 
 ## What this deliberately does not do
 
@@ -194,7 +198,7 @@ Anchors other than `twoCellAnchor` are available through `Anchor` and
 - Register parts in `[Content_Types].xml` or the workbook relationships. It
   hands you the content type and the relationship XML; wiring them in is yours.
 - Reproduce every chart feature Excel has. See [ROADMAP.md](ROADMAP.md) for
-  what is not covered yet, such as combination charts and secondary axes.
+  what is covered and how it is verified.
 
 ## License
 

@@ -1,7 +1,7 @@
 # Roadmap
 
 What `ooxml-chart` does not do yet, and where each item stands. **Done** items
-shipped in `[Unreleased]` (see `CHANGELOG.md`); **Open** items are not started.
+shipped in `[0.1.0]` (see `CHANGELOG.md`); **Open** items are not started.
 
 The scope line does not move: this crate emits chart and drawing **XML**. It
 does not read, write, or zip `.xlsx` packages.
