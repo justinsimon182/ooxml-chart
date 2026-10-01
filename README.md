@@ -163,6 +163,122 @@ let part = ChartSpec::new(ChartKind::ColumnClustered)
 # Ok::<(), ooxml_chart::ChartError>(())
 ```
 
+## Stock, 3-D, pie-of-pie and surface charts
+
+Stock charts take their series in a fixed order, and a volume column can share
+the chart through a second plot:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, Plot, Series, SeriesName};
+
+let s = |name: &str, column: &str| {
+    Series::new(SeriesName::Literal(name.into()), format!("'Sheet1'!${column}$2:${column}$30"))
+        .with_categories("'Sheet1'!$A$2:$A$30")
+};
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .series(s("Volume", "F"))
+    .plot(
+        Plot::new(ChartKind::StockOpenHighLowClose)
+            .series(s("Open", "B"))
+            .series(s("High", "C"))
+            .series(s("Low", "D"))
+            .series(s("Close", "E"))
+            .on_secondary_axis(),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+A 3-D chart is an ordinary chart plus a view. Anything unset takes Excel's own
+default for the kind:
+
+```rust
+use ooxml_chart::{BarShape, ChartKind, ChartSpec, Series, SeriesName, View3D};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .view_3d(View3D::new().rotation_x(20).rotation_y(30).bar_shape(BarShape::Cylinder))
+    .series(
+        Series::new(SeriesName::Literal("Sales".into()), "'Sheet1'!$B$2:$B$5")
+            .with_categories("'Sheet1'!$A$2:$A$5"),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Pie-of-pie and bar-of-pie move some points into a second plot:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, OfPie, OfPieSplit, Series, SeriesName};
+
+let part = ChartSpec::new(ChartKind::PieOfPie)
+    .of_pie(OfPie::new().split(OfPieSplit::LastPoints(2)).second_size(60))
+    .series(
+        Series::new(SeriesName::Literal("Share".into()), "'Sheet1'!$B$2:$B$8")
+            .with_categories("'Sheet1'!$A$2:$A$8"),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+A surface colours its value bands rather than its series, so its series carry
+no colour of their own:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
+
+let s = |name: &str, column: &str| {
+    Series::new(SeriesName::Literal(name.into()), format!("'Sheet1'!${column}$2:${column}$6"))
+        .with_categories("'Sheet1'!$A$2:$A$6")
+};
+let part = ChartSpec::new(ChartKind::Surface)
+    .surface_bands(["0090B2", "28EAE4", "8E0DD1"])
+    .series(s("North", "B"))
+    .series(s("South", "C"))
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+An axis can show its values in thousands or millions, with a caption of your
+own wording:
+
+```rust
+use ooxml_chart::{Axis, DisplayUnit};
+
+let axis = Axis::default()
+    .display_units(DisplayUnit::Millions)
+    .display_units_caption("USD millions");
+```
+
+## Pictures and text boxes beside a chart
+
+A drawing can host a picture or a text box as well as charts. The image bytes
+are yours to put in the package; the drawing only points at them:
+
+```rust
+use ooxml_chart::{
+    drawing_part_objects, drawing_relationships_typed, Anchor, DrawingObject, GraphicFrame,
+    Picture, TextBox, CHART_RELATIONSHIP_TYPE, IMAGE_RELATIONSHIP_TYPE,
+};
+
+let frame = GraphicFrame {
+    id: 2,
+    name: "Chart 1".into(),
+    relationship_id: "rId1".into(),
+    edit_as: None,
+};
+let at = |x_emu| Anchor::Absolute { x_emu, y_emu: 0, width_emu: 3_000_000, height_emu: 2_000_000 };
+let drawing = drawing_part_objects(&[
+    (at(0), DrawingObject::Chart(frame)),
+    (at(3_000_000), DrawingObject::Picture(Picture::new(3, "Logo", "rId2").description("Company logo"))),
+    (at(6_000_000), DrawingObject::TextBox(TextBox::new(4, "Source", "Source: field survey"))),
+]);
+let rels = drawing_relationships_typed(&[
+    ("rId1".into(), CHART_RELATIONSHIP_TYPE, "../charts/chart1.xml".into()),
+    ("rId2".into(), IMAGE_RELATIONSHIP_TYPE, "../media/image1.png".into()),
+]);
+assert!(!drawing.is_empty() && !rels.is_empty());
+```
+
 ## Declaring a chart as data
 
 With the `serde` feature every spec type implements `Serialize` and
