@@ -25,7 +25,7 @@
 /// and U+FFFF, are not legal in any XML 1.0 document, escaped or not. A stray
 /// NUL pasted into a title makes Excel report the whole file damaged, so they
 /// are dropped rather than written.
-pub fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     let legal = |c: &char| {
         matches!(
             c,

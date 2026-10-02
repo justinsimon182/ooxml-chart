@@ -38,6 +38,7 @@
 //! ```
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+#![warn(missing_debug_implementations, unreachable_pub)]
 
 mod chartsheet;
 mod drawing;

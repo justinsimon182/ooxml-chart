@@ -306,7 +306,7 @@ fn plots(spec: &ChartSpec) -> Vec<PlotRef<'_>> {
     all
 }
 
-pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
+pub(crate) fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     let plots = plots(spec);
     if plots.iter().any(|plot| plot.series.is_empty()) {
         return Err(ChartError::NoSeries);
