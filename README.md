@@ -279,6 +279,70 @@ let rels = drawing_relationships_typed(&[
 assert!(!drawing.is_empty() && !rels.is_empty());
 ```
 
+## Lines, bars and flags on a chart
+
+Drop lines, high-low lines, up/down bars and series lines are chart-wide
+switches, refused on a kind that cannot carry them. So are the chart's style,
+language, rounded corners and date system:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
+
+let s = |name: &str, column: &str| {
+    Series::new(SeriesName::Literal(name.into()), format!("'Sheet1'!${column}$2:${column}$30"))
+        .with_categories("'Sheet1'!$A$2:$A$30")
+};
+let part = ChartSpec::new(ChartKind::Line)
+    .series(s("Open", "B"))
+    .series(s("Close", "C"))
+    .high_low_lines(true)
+    .up_down_bars("0090B2", "8E0DD1")
+    .language("en-US")
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Categories that nest, such as a year column beside a month column, take a
+multi-column range. Excel reads the labels from the sheet, so no cache goes with
+them:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .series(
+        Series::new(SeriesName::Literal("Sales".into()), "'Sheet1'!$C$2:$C$13")
+            .with_multi_level_categories("'Sheet1'!$A$2:$B$13"),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+## A chart on its own sheet
+
+A chartsheet holds one chart and no cells. The chart part is the one above; the
+rest is a wrapper and the lines that register it:
+
+```rust
+use ooxml_chart::{
+    chartsheet_content_types_override, chartsheet_drawing_part, chartsheet_part,
+    workbook_chartsheet_relationship, workbook_sheet_element, GraphicFrame,
+};
+
+let frame = GraphicFrame {
+    id: 2,
+    name: "Chart 1".into(),
+    relationship_id: "rId1".into(),
+    edit_as: None,
+};
+let drawing = chartsheet_drawing_part(&frame);      // xl/drawings/drawing1.xml
+let sheet = chartsheet_part("rId1");                // xl/chartsheets/sheet1.xml
+let content_type = chartsheet_content_types_override("/xl/chartsheets/sheet1.xml");
+let workbook_rel = workbook_chartsheet_relationship("rId2", "chartsheets/sheet1.xml");
+let sheet_entry = workbook_sheet_element("Sales chart", 2, "rId2")?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
 ## Declaring a chart as data
 
 With the `serde` feature every spec type implements `Serialize` and

@@ -48,6 +48,7 @@ does not read, write, or zip `.xlsx` packages.
 | Date axis major and minor time units | Done — `Axis::date_major`, `date_minor`; never finer than the base unit |
 | Custom crossing value | Done — `Axis::crosses_at`, in the other axis's units |
 | Axis line styling | Done (`Axis::line`) |
+| Drop lines, high-low lines, up/down bars on line charts; series lines on stacked bars | Done (`drop_lines`, `high_low_lines`, `up_down_bars`, `series_lines`) |
 | Display units (thousands, millions) | Done (`Axis::display_units`, `display_units_caption`) |
 
 ## Text, colour and layout
@@ -70,6 +71,7 @@ does not read, write, or zip `.xlsx` packages.
 | `twoCellAnchor`, `oneCellAnchor`, `absoluteAnchor` | Done |
 | `[Content_Types].xml` entry for a chart part | Done — `ChartPart::content_types_override` |
 | Drawing content-type and worksheet-relationship constants | Done (`DRAWING_CONTENT_TYPE`, `worksheet_drawing_relationship`) |
+| Chartsheet (a chart on its own sheet) | Done (`chartsheet_part`, `chartsheet_drawing_part`, `workbook_sheet_element`) |
 | Drawings hosting pictures and text boxes | Done (`DrawingObject`, `Picture`, `TextBox`, `drawing_part_objects`) |
 
 ## Crate
@@ -86,7 +88,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 82 in all) validates against the
+date axis, and one drawing per anchor type â€” 87 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

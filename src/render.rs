@@ -41,10 +41,37 @@ const HEADER: &str = concat!(
     r#" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart""#,
     r#" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#,
     r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"#,
-    // The schema default is *true*: without this, some readers round the
-    // chart's border.
-    r#"<c:roundedCorners val="0"/>"#,
 );
+
+/// The chart-wide settings that precede `<c:chart>`, in schema order.
+fn chart_flags_xml(spec: &ChartSpec) -> String {
+    let mut out = String::new();
+    if spec.date_1904 {
+        out.push_str(r#"<c:date1904 val="1"/>"#);
+    }
+    if let Some(tag) = &spec.language {
+        out.push_str(&format!(r#"<c:lang val="{}"/>"#, escape(tag)));
+    }
+    // The schema default is *true*: without an explicit off, some readers round
+    // the chart's border.
+    out.push_str(&format!(
+        r#"<c:roundedCorners val="{}"/>"#,
+        i32::from(spec.rounded_corners)
+    ));
+    if let Some(style) = spec.style {
+        out.push_str(&format!(r#"<c:style val="{style}"/>"#));
+    }
+    out
+}
+
+/// A chart-wide flag that adds a `<c:..Lines/>` element, or nothing.
+fn flag_xml(on: bool, tag: &str) -> String {
+    if on {
+        format!("<c:{tag}/>")
+    } else {
+        String::new()
+    }
+}
 
 /// The plot-element family a kind renders as.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -146,6 +173,8 @@ struct PlotRef<'a> {
     secondary: bool,
     /// Drawn with a `<c:view3D>`. Only ever the chart's own plot.
     three_d: bool,
+    /// The chart's own plot, not an added one. Chart-wide lines and bars go here.
+    lead: bool,
 }
 
 impl<'a> PlotRef<'a> {
@@ -156,6 +185,7 @@ impl<'a> PlotRef<'a> {
             series,
             secondary,
             three_d: false,
+            lead: false,
         }
     }
 
@@ -264,6 +294,7 @@ fn check_layout(layout: &Layout) -> Result<(), ChartError> {
 fn plots(spec: &ChartSpec) -> Vec<PlotRef<'_>> {
     let mut first = PlotRef::of(spec.kind, &spec.series, false);
     first.three_d = spec.view_3d.is_some();
+    first.lead = true;
     let mut all = vec![first];
     all.extend(spec.extra_plots.iter().map(
         |Plot {
@@ -284,6 +315,7 @@ pub fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
 
     let mut out = String::with_capacity(4096);
     out.push_str(HEADER);
+    out.push_str(&chart_flags_xml(spec));
     out.push_str("<c:chart>");
     if let Some(title) = &spec.title {
         out.push_str(&title_xml(
@@ -581,17 +613,52 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             }
         }
     }
+    let lead = &plots[0];
+    let plain_line = lead.family == Family::Line && !lead.three_d;
     if let Some((up, down)) = &spec.stock_bars {
-        if !plots
+        let stock = plots
             .iter()
-            .any(|plot| plot.family == Family::Stock { open: true })
-        {
+            .any(|plot| plot.family == Family::Stock { open: true });
+        if !stock && !plain_line {
             return unsupported(
-                "stock bar colours on a chart with no open-high-low-close plot".to_string(),
+                "up and down bars on a chart that is not a line or open-high-low-close chart"
+                    .to_string(),
+            );
+        }
+        if !stock && lead.series.len() < 2 {
+            return unsupported(
+                "up and down bars on a line chart of fewer than two series".to_string(),
             );
         }
         check_color(up)?;
         check_color(down)?;
+    }
+    if spec.drop_lines
+        && !((plain_line || matches!(lead.family, Family::Area { .. })) && !lead.three_d)
+    {
+        return unsupported(format!("drop lines on {:?}", lead.kind));
+    }
+    if spec.high_low_lines && !(plain_line && lead.series.len() >= 2) {
+        return unsupported(
+            "high-low lines on anything but a line chart of at least two series".to_string(),
+        );
+    }
+    if spec.series_lines
+        && !(matches!(lead.family, Family::Bar { grouping, .. } if grouping != "clustered")
+            && !lead.three_d)
+    {
+        return unsupported(format!("series lines on {:?}", lead.kind));
+    }
+    if let Some(style) = spec.style {
+        check_range("chart style", i64::from(style), 1, 48)?;
+    }
+    if let Some(tag) = &spec.language {
+        let ok = !tag.is_empty()
+            && tag.len() <= 35
+            && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        if !ok {
+            return unsupported(format!("a language tag {tag:?}"));
+        }
     }
 
     // Per-series settings.
@@ -690,6 +757,14 @@ fn check_surface_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), Chart
 }
 
 fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
+    if series.multi_level_categories {
+        if matches!(plot.family, Family::Scatter | Family::Bubble) {
+            return unsupported(format!("multi-level categories on {:?}", plot.kind));
+        }
+        if series.categories_cache.is_some() {
+            return unsupported("a category cache with multi-level categories".to_string());
+        }
+    }
     if matches!(plot.family, Family::Surface { .. }) {
         check_surface_series(plot, series)?;
     }
@@ -1234,14 +1309,23 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
                 .map(|value| format!(r#"<c:overlap val="{value}"/>"#))
                 .unwrap_or_default();
             format!(
-                r#"<c:barChart><c:barDir val="{direction}"/><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapWidth val="{gap}"/>{overlap_xml}{axes}</c:barChart>"#,
+                r#"<c:barChart><c:barDir val="{direction}"/><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapWidth val="{gap}"/>{overlap_xml}{series_lines}{axes}</c:barChart>"#,
                 gap = spec.gap_width,
+                series_lines = flag_xml(spec.series_lines && plot.lead, "serLines"),
             )
         }
         Family::Line => {
             let marker = i32::from(plot.kind == ChartKind::LineMarkers);
+            let lead = plot.lead;
+            let drop = flag_xml(spec.drop_lines && lead, "dropLines");
+            let high_low = flag_xml(spec.high_low_lines && lead, "hiLowLines");
+            let bars = if lead && spec.stock_bars.is_some() {
+                stock_bars_xml(spec)
+            } else {
+                String::new()
+            };
             format!(
-                r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}<c:marker val="{marker}"/>{axes}</c:lineChart>"#,
+                r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}{drop}{high_low}{bars}<c:marker val="{marker}"/>{axes}</c:lineChart>"#,
             )
         }
         Family::OfPie { bar } => {
@@ -1261,7 +1345,8 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             format!(r#"<c:stockChart>{series}{labels}<c:hiLowLines/>{bars}{axes}</c:stockChart>"#)
         }
         Family::Area { grouping } => format!(
-            r#"<c:areaChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}{axes}</c:areaChart>"#,
+            r#"<c:areaChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}{drop}{axes}</c:areaChart>"#,
+            drop = flag_xml(spec.drop_lines && plot.lead, "dropLines"),
         ),
         Family::Scatter => format!(
             r#"<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>{series}{labels}{axes}</c:scatterChart>"#,
@@ -1822,6 +1907,12 @@ fn series_xml(
         .categories
         .as_ref()
         .map(|reference| {
+            if series.multi_level_categories {
+                return format!(
+                    "<c:cat><c:multiLvlStrRef><c:f>{}</c:f></c:multiLvlStrRef></c:cat>",
+                    escape(reference)
+                );
+            }
             let cache = series
                 .categories_cache
                 .as_deref()

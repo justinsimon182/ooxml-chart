@@ -39,6 +39,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod chartsheet;
 mod drawing;
 mod error;
 mod metrics;
@@ -48,6 +49,11 @@ mod spec;
 mod template;
 mod xml;
 
+pub use chartsheet::{
+    chartsheet_content_types_override, chartsheet_drawing_part, chartsheet_part,
+    workbook_chartsheet_relationship, workbook_sheet_element, CHARTSHEET_CONTENT_TYPE,
+    CHARTSHEET_RELATIONSHIP_TYPE,
+};
 pub use drawing::{
     anchor_xml, anchor_xml_for, drawing_content_types_override, drawing_object_xml, drawing_part,
     drawing_part_objects, drawing_part_with, drawing_relationships, drawing_relationships_typed,

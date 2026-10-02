@@ -680,3 +680,69 @@ mod other_objects {
         assert_eq!(rels.matches("<Relationship ").count(), 2, "{rels}");
     }
 }
+
+// --- chartsheets ------------------------------------------------------------------------
+
+mod chartsheets {
+    use super::*;
+    use ooxml_chart::{
+        chartsheet_content_types_override, chartsheet_drawing_part, chartsheet_part,
+        workbook_chartsheet_relationship, workbook_sheet_element, CHARTSHEET_CONTENT_TYPE,
+        CHARTSHEET_RELATIONSHIP_TYPE,
+    };
+
+    #[test]
+    fn a_chartsheet_wraps_its_drawing_and_is_well_formed() {
+        let xml = String::from_utf8(chartsheet_part("rId1")).expect("utf-8");
+        assert!(
+            xml.contains(
+                r#"<chartsheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main""#
+            ),
+            "{xml}"
+        );
+        assert!(
+            xml.ends_with(r#"<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><drawing r:id="rId1"/></chartsheet>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn the_drawing_anchors_one_chart_absolutely_at_the_origin() {
+        let xml = String::from_utf8(chartsheet_drawing_part(&frame())).expect("utf-8");
+        assert!(
+            xml.contains(
+                r#"<xdr:absoluteAnchor><xdr:pos x="0" y="0"/><xdr:ext cx="9293679" cy="6068786"/>"#
+            ),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn the_registration_lines_name_the_right_types() {
+        assert_eq!(
+            chartsheet_content_types_override("/xl/chartsheets/sheet1.xml"),
+            format!(
+                r#"<Override PartName="/xl/chartsheets/sheet1.xml" ContentType="{CHARTSHEET_CONTENT_TYPE}"/>"#
+            )
+        );
+        assert_eq!(
+            workbook_chartsheet_relationship("rId3", "chartsheets/sheet1.xml"),
+            format!(
+                r#"<Relationship Id="rId3" Type="{CHARTSHEET_RELATIONSHIP_TYPE}" Target="chartsheets/sheet1.xml"/>"#
+            )
+        );
+        assert_eq!(
+            workbook_sheet_element("Q&A", 2, "rId3").expect("a name"),
+            r#"<sheet name="Q&amp;A" sheetId="2" r:id="rId3"/>"#
+        );
+    }
+
+    #[test]
+    fn a_name_excel_would_refuse_is_refused() {
+        let long = "x".repeat(32);
+        for name in ["", "a/b", "a:b", "[x]", "'x", "x'", long.as_str()] {
+            assert!(workbook_sheet_element(name, 1, "rId1").is_err(), "{name:?}");
+        }
+        assert!(workbook_sheet_element(&"x".repeat(31), 1, "rId1").is_ok());
+    }
+}

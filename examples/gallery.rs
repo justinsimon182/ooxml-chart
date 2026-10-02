@@ -727,6 +727,52 @@ fn run() {
                 .series(plain("South", "C")),
         ),
         (
+            "line_decorations",
+            ChartSpec::new(ChartKind::Line)
+                .title("Line decorations")
+                .drop_lines(true)
+                .high_low_lines(true)
+                .up_down_bars("0090B2", "8E0DD1")
+                .series(series("Open", "B", "8E0DD1"))
+                .series(series("Close", "C", "0090B2")),
+        ),
+        (
+            "area_drop_lines",
+            ChartSpec::new(ChartKind::Area)
+                .title("Area drop lines")
+                .drop_lines(true)
+                .series(series("North", "B", "8E0DD1")),
+        ),
+        (
+            "column_series_lines",
+            ChartSpec::new(ChartKind::ColumnStacked)
+                .title("Series lines")
+                .series_lines(true)
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "chart_flags",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Chart flags")
+                .rounded_corners(true)
+                .date_1904(true)
+                .language("en-US")
+                .style(10)
+                .series(series("North", "B", "8E0DD1")),
+        ),
+        (
+            "multi_level_categories",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Multi-level categories")
+                .series({
+                    // The labels come from the sheet, so no cache goes with them.
+                    let mut nested = series("North", "C", "8E0DD1");
+                    nested.categories_cache = None;
+                    nested.with_multi_level_categories("'Sheet1'!$A$2:$B$5")
+                }),
+        ),
+        (
             "date_axis",
             ChartSpec::new(ChartKind::Line)
                 .title("Daily")

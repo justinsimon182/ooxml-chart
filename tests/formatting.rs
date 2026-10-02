@@ -3266,3 +3266,145 @@ mod surface {
         }
     }
 }
+
+// --- chart-wide flags and line decorations ---------------------------------------------
+
+mod decorations {
+    use super::*;
+
+    fn two(kind: ChartKind) -> ChartSpec {
+        ChartSpec::new(kind).series(series()).series(series())
+    }
+
+    #[test]
+    fn the_default_header_is_unchanged() {
+        let xml = render(two(ChartKind::Line));
+        assert!(
+            xml.contains(r#"relationships"><c:roundedCorners val="0"/><c:chart>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn chart_wide_flags_follow_schema_order() {
+        let xml = render(
+            two(ChartKind::Line)
+                .date_1904(true)
+                .language("en-US")
+                .rounded_corners(true)
+                .style(10),
+        );
+        assert!(
+            xml.contains(r#"<c:date1904 val="1"/><c:lang val="en-US"/><c:roundedCorners val="1"/><c:style val="10"/><c:chart>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_bad_style_or_language_is_refused() {
+        for spec in [
+            two(ChartKind::Line).style(0),
+            two(ChartKind::Line).style(49),
+        ] {
+            assert!(matches!(refused(spec), ChartError::OutOfRange { .. }));
+        }
+        for tag in ["", "en US", "<x>"] {
+            let spec = two(ChartKind::Line).language(tag);
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+
+    #[test]
+    fn a_line_takes_drop_lines_high_low_lines_and_up_down_bars_before_the_marker() {
+        let xml = render(
+            two(ChartKind::Line)
+                .drop_lines(true)
+                .high_low_lines(true)
+                .up_down_bars("0090B2", "8E0DD1"),
+        );
+        assert!(
+            xml.contains(r#"</c:ser><c:dropLines/><c:hiLowLines/><c:upDownBars><c:gapWidth val="150"/><c:upBars><c:spPr><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></c:spPr></c:upBars><c:downBars><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></c:spPr></c:downBars></c:upDownBars><c:marker val="0"/>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_area_takes_drop_lines_and_a_stacked_column_series_lines() {
+        let area = render(two(ChartKind::Area).drop_lines(true));
+        assert!(area.contains(r#"</c:ser><c:dropLines/><c:axId"#), "{area}");
+        let stacked = render(two(ChartKind::ColumnStacked).series_lines(true));
+        assert!(
+            stacked.contains(r#"<c:overlap val="100"/><c:serLines/><c:axId"#),
+            "{stacked}"
+        );
+    }
+
+    #[test]
+    fn what_a_kind_cannot_carry_is_refused() {
+        let bad = [
+            two(ChartKind::ColumnClustered).drop_lines(true),
+            two(ChartKind::ColumnClustered).high_low_lines(true),
+            ChartSpec::new(ChartKind::Line)
+                .series(series())
+                .high_low_lines(true),
+            ChartSpec::new(ChartKind::Line)
+                .series(series())
+                .up_down_bars("0090B2", "8E0DD1"),
+            two(ChartKind::ColumnClustered).up_down_bars("0090B2", "8E0DD1"),
+            two(ChartKind::ColumnClustered).series_lines(true),
+            two(ChartKind::Line)
+                .view_3d(ooxml_chart::View3D::new())
+                .drop_lines(true),
+        ];
+        for spec in bad {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+        assert!(matches!(
+            refused(two(ChartKind::Line).up_down_bars("nope", "8E0DD1")),
+            ChartError::InvalidColor(_)
+        ));
+    }
+}
+
+// --- multi-level categories ----------------------------------------------------------
+
+mod multi_level {
+    use super::*;
+
+    fn nested() -> Series {
+        series().with_multi_level_categories("'Sheet1'!$A$2:$B$5")
+    }
+
+    #[test]
+    fn nested_categories_write_a_multi_level_reference_without_a_cache() {
+        let xml = render(ChartSpec::new(ChartKind::ColumnClustered).series(nested()));
+        assert!(
+            xml.contains(r#"<c:cat><c:multiLvlStrRef><c:f>&#39;Sheet1&#39;!$A$2:$B$5</c:f></c:multiLvlStrRef></c:cat><c:val>"#),
+            "{xml}"
+        );
+        assert!(
+            !xml.contains("<c:strRef><c:f>&#39;Sheet1&#39;!$A$2"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn plain_categories_are_unchanged() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_categories("'Sheet1'!$A$2:$A$5")),
+        );
+        assert!(xml.contains("<c:cat><c:strRef>"), "{xml}");
+        assert!(!xml.contains("multiLvl"), "{xml}");
+    }
+
+    #[test]
+    fn scatter_and_a_cache_are_refused() {
+        let scatter = ChartSpec::new(ChartKind::Scatter).series(nested());
+        let cached = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(nested().with_cached_categories(vec!["a".into()]));
+        for spec in [scatter, cached] {
+            assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+        }
+    }
+}

@@ -343,6 +343,35 @@ fn a_surface_with_bands_survives_a_round_trip() {
 }
 
 #[test]
+fn chart_flags_and_line_decorations_survive_a_round_trip() {
+    let one = |name: &str| Series::new(SeriesName::Literal(name.into()), "S!$B$2:$B$5");
+    let spec = ChartSpec::new(ChartKind::Line)
+        .series(one("A"))
+        .series(one("B"))
+        .rounded_corners(true)
+        .date_1904(true)
+        .language("en-US")
+        .style(5)
+        .drop_lines(true)
+        .high_low_lines(true)
+        .up_down_bars("0090B2", "8E0DD1");
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
+fn multi_level_categories_survive_a_round_trip() {
+    let spec = ChartSpec::new(ChartKind::ColumnClustered).series(
+        Series::new(SeriesName::Literal("A".into()), "S!$C$2:$C$5")
+            .with_multi_level_categories("S!$A$2:$B$5"),
+    );
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
