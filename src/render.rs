@@ -799,6 +799,14 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
         if let Some((_, size)) = point.marker {
             check_range("marker size", i64::from(size), 2, 72)?;
         }
+        if let Some(effects) = &point.effects {
+            let shaped =
+                is_round(plot.family) || matches!(plot.family, Family::Bar { .. } | Family::Bubble);
+            if !shaped {
+                return unsupported(format!("point effects on {:?}", plot.kind));
+            }
+            check_effects(effects)?;
+        }
     }
     for (_, label) in &series.point_labels {
         if label.hidden && label.text.is_some() {
@@ -2102,8 +2110,8 @@ fn points_xml(plot: &PlotRef<'_>, series: &Series) -> String {
                 .as_ref()
                 .map(fill_xml)
                 .or_else(|| point.color.as_deref().map(solid))
-                .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
                 .unwrap_or_default();
+            let fill = series_sp_pr(&fill, point.effects.as_ref());
             // A point that changes nothing here (e.g. it only sets a marker)
             // would be an empty `<c:dPt>`.
             if explosion.is_empty() && fill.is_empty() {

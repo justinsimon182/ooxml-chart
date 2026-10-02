@@ -4,6 +4,14 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `PointFormat::effects`: shadow, glow or soft edge on a single bar, slice or
+  bubble. Other kinds refuse it.
+- Gallery grows to 91 parts.
+
 ## [0.4.0] - 2026-10-02
 
 ### Added

@@ -723,6 +723,19 @@ fn run() {
                 .series(series("South", "C", "0090B2")),
         ),
         (
+            "point_effects",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Point effects")
+                .series(
+                    series("North", "B", "8E0DD1").with_point(
+                        1,
+                        PointFormat::new()
+                            .color("0090B2")
+                            .effects(Effects::new().glow(Glow::new("28EAE4", 6.0))),
+                    ),
+                ),
+        ),
+        (
             "series_shadow",
             ChartSpec::new(ChartKind::ColumnClustered)
                 .title("Series shadow")

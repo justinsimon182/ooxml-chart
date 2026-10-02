@@ -71,7 +71,7 @@ does not read, write, or zip `.xlsx` packages.
 | `twoCellAnchor`, `oneCellAnchor`, `absoluteAnchor` | Done |
 | `[Content_Types].xml` entry for a chart part | Done — `ChartPart::content_types_override` |
 | Drawing content-type and worksheet-relationship constants | Done (`DRAWING_CONTENT_TYPE`, `worksheet_drawing_relationship`) |
-| Shadow, glow and soft-edge effects on series, chart and plot areas, walls | Done (`Effects`, `Shadow`, `Glow`) |
+| Shadow, glow and soft-edge effects on series, single points, chart and plot areas, walls | Done (`Effects`, `Shadow`, `Glow`) |
 | Chartsheet (a chart on its own sheet) | Done (`chartsheet_part`, `chartsheet_drawing_part`, `workbook_sheet_element`) |
 | Drawings hosting pictures and text boxes | Done (`DrawingObject`, `Picture`, `TextBox`, `drawing_part_objects`) |
 
@@ -89,7 +89,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 90 in all) validates against the
+date axis, and one drawing per anchor type â€” 91 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
