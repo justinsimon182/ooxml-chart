@@ -174,9 +174,19 @@ pub struct PointFormat {
     /// Marker shape and size in points (2-72) for this point alone. Line,
     /// scatter and unfilled radar series only.
     pub marker: Option<(MarkerSymbol, u8)>,
+    /// Shadow, glow and soft edge for this point alone. Bar, column, pie,
+    /// doughnut and bubble series only; other kinds refuse it.
+    pub effects: Option<Effects>,
 }
 
 impl PointFormat {
+    /// Gives this point its own shadow, glow or soft edge.
+    #[must_use]
+    pub fn effects(mut self, effects: Effects) -> Self {
+        self.effects = Some(effects);
+        self
+    }
+
     /// Gives this point its own marker, `size` in points (checked at render
     /// time, 2-72).
     #[must_use]

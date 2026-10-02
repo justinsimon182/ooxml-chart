@@ -3536,3 +3536,63 @@ mod effects {
         }
     }
 }
+
+// --- point effects --------------------------------------------------------------------
+
+mod point_effects {
+    use super::*;
+    use ooxml_chart::{Effects, Glow, Shadow};
+
+    fn point() -> PointFormat {
+        PointFormat::new().color("8E0DD1").effects(
+            Effects::new()
+                .glow(Glow::new("8E0DD1", 4.0))
+                .shadow(Shadow::new("010102")),
+        )
+    }
+
+    #[test]
+    fn a_bar_point_writes_effects_after_its_fill() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered).series(series().with_point(1, point())),
+        );
+        assert!(
+            xml.contains(r#"<c:dPt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill><a:effectLst><a:glow"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn effects_alone_make_a_point_and_a_slice_can_carry_them() {
+        let only = PointFormat::new().effects(Effects::new().soft_edge(2.0));
+        for kind in [
+            ChartKind::ColumnClustered,
+            ChartKind::Pie,
+            ChartKind::Doughnut,
+        ] {
+            let xml = render(ChartSpec::new(kind).series(series().with_point(0, only.clone())));
+            assert!(
+                xml.contains(r#"<c:dPt><c:idx val="0"/><c:spPr><a:effectLst><a:softEdge"#),
+                "{kind:?}: {xml}"
+            );
+        }
+    }
+
+    #[test]
+    fn kinds_without_a_shape_per_point_refuse_them() {
+        for kind in [ChartKind::Line, ChartKind::Area, ChartKind::Radar] {
+            let spec = ChartSpec::new(kind).series(series().with_point(0, point()));
+            assert!(
+                matches!(refused(spec), ChartError::Unsupported { .. }),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn nonsense_values_are_refused() {
+        let bad =
+            PointFormat::new().effects(Effects::new().shadow(Shadow::new("000000").angle(400)));
+        refused(ChartSpec::new(ChartKind::ColumnClustered).series(series().with_point(0, bad)));
+    }
+}

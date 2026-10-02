@@ -339,6 +339,7 @@ let part = ChartSpec::new(ChartKind::ColumnClustered)
 # Ok::<(), ooxml_chart::ChartError>(())
 ```
 
+A single bar, slice or bubble takes them through `PointFormat::effects`.
 Stock charts and a markers-only scatter chart draw no line for an effect to
 hang on, so they refuse series effects.
 
