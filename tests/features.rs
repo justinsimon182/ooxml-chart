@@ -473,33 +473,16 @@ fn a_pie_with_a_start_angle_writes_it_and_one_without_writes_nothing() {
 // --- anchors ---------------------------------------------------------------
 
 fn frame() -> GraphicFrame {
-    GraphicFrame {
-        id: 2,
-        name: "Chart 1".to_string(),
-        relationship_id: "rId1".to_string(),
-        edit_as: Some("oneCell".to_string()),
-    }
+    GraphicFrame::new(2, "Chart 1", "rId1").with_edit_as("oneCell")
 }
 
 fn corner() -> CellAnchor {
-    CellAnchor {
-        col: 3,
-        col_offset_emu: 0,
-        row: 4,
-        row_offset_emu: 9525,
-    }
+    CellAnchor::new(3, 4).with_offsets(0, 9525)
 }
 
 #[test]
 fn a_one_cell_anchor_has_a_corner_and_a_size_and_no_edit_as() {
-    let part = drawing_part_with(&[(
-        Anchor::OneCell {
-            from: corner(),
-            width_emu: 1_000_000,
-            height_emu: 500_000,
-        },
-        frame(),
-    )]);
+    let part = drawing_part_with(&[(Anchor::one_cell(corner(), 1_000_000, 500_000), frame())]);
     let out = String::from_utf8(part).unwrap();
     assert_well_formed(&out);
     assert!(
@@ -516,15 +499,7 @@ fn a_one_cell_anchor_has_a_corner_and_a_size_and_no_edit_as() {
 
 #[test]
 fn an_absolute_anchor_has_a_position_and_a_size() {
-    let part = drawing_part_with(&[(
-        Anchor::Absolute {
-            x_emu: 10,
-            y_emu: 20,
-            width_emu: 30,
-            height_emu: 40,
-        },
-        frame(),
-    )]);
+    let part = drawing_part_with(&[(Anchor::absolute(10, 20, 30, 40), frame())]);
     let out = String::from_utf8(part).unwrap();
     assert_well_formed(&out);
     assert!(
@@ -536,26 +511,10 @@ fn an_absolute_anchor_has_a_position_and_a_size() {
 #[test]
 fn anchor_types_can_share_a_drawing() {
     use ooxml_chart::TwoCellAnchor;
-    let two = TwoCellAnchor {
-        from: corner(),
-        to: CellAnchor {
-            col: 9,
-            col_offset_emu: 0,
-            row: 20,
-            row_offset_emu: 0,
-        },
-    };
+    let two = TwoCellAnchor::new(corner(), CellAnchor::new(9, 20));
     let part = drawing_part_with(&[
         (Anchor::TwoCell(two), frame()),
-        (
-            Anchor::Absolute {
-                x_emu: 0,
-                y_emu: 0,
-                width_emu: 1,
-                height_emu: 1,
-            },
-            frame(),
-        ),
+        (Anchor::absolute(0, 0, 1, 1), frame()),
     ]);
     let out = String::from_utf8(part).unwrap();
     assert_well_formed(&out);
@@ -583,11 +542,7 @@ mod other_objects {
     #[test]
     fn a_picture_points_at_its_image_and_carries_alt_text() {
         let xml = part(
-            Anchor::OneCell {
-                from: corner(),
-                width_emu: 100,
-                height_emu: 50,
-            },
+            Anchor::one_cell(corner(), 100, 50),
             DrawingObject::Picture(Picture::new(3, "Logo", "rId7").description("A <logo>")),
         );
         assert!(
@@ -611,12 +566,7 @@ mod other_objects {
     #[test]
     fn a_text_box_makes_a_paragraph_per_line_and_escapes_text() {
         let xml = part(
-            Anchor::Absolute {
-                x_emu: 1,
-                y_emu: 2,
-                width_emu: 3,
-                height_emu: 4,
-            },
+            Anchor::absolute(1, 2, 3, 4),
             DrawingObject::TextBox(TextBox::new(4, "Note", "a & b\n\nc")),
         );
         assert!(
@@ -632,15 +582,7 @@ mod other_objects {
 
     #[test]
     fn a_chart_object_is_written_as_before_and_objects_mix() {
-        let two = TwoCellAnchor {
-            from: corner(),
-            to: CellAnchor {
-                col: 9,
-                col_offset_emu: 0,
-                row: 20,
-                row_offset_emu: 0,
-            },
-        };
+        let two = TwoCellAnchor::new(corner(), CellAnchor::new(9, 20));
         let plain = drawing_part_with(&[(Anchor::TwoCell(two), frame())]);
         let objects = drawing_part_objects(&[
             (Anchor::TwoCell(two), DrawingObject::Chart(frame())),

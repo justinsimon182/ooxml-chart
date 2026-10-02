@@ -58,6 +58,7 @@ pub fn worksheet_drawing_element(id: &str) -> String {
 
 /// The frame that hosts one chart inside a drawing.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct GraphicFrame {
     /// The frame's document-unique id. Excel's own numbering starts at 2.
     pub id: u32,
@@ -81,6 +82,25 @@ pub struct GraphicFrame {
     /// opens cleanly and nothing looks wrong until someone changes a row
     /// height.
     pub edit_as: Option<String>,
+}
+
+impl GraphicFrame {
+    /// A frame reached by `relationship_id`, with `edit_as` omitted.
+    pub fn new(id: u32, name: impl Into<String>, relationship_id: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            relationship_id: relationship_id.into(),
+            edit_as: None,
+        }
+    }
+
+    /// Sets the anchor's `editAs`; see [`GraphicFrame::edit_as`].
+    #[must_use]
+    pub fn with_edit_as(mut self, value: impl Into<String>) -> Self {
+        self.edit_as = Some(value.into());
+        self
+    }
 }
 
 /// The frame and its trailing `<xdr:clientData/>`, shared by every anchor type.
@@ -130,6 +150,7 @@ pub enum Anchor {
     /// One cell corner and a fixed size in EMU. Moves with its cell, never
     /// resizes. The schema gives this anchor no `editAs`, so
     /// [`GraphicFrame::edit_as`] is not written.
+    #[non_exhaustive]
     OneCell {
         /// The top-left corner.
         from: CellAnchor,
@@ -139,6 +160,7 @@ pub enum Anchor {
         height_emu: u64,
     },
     /// A fixed position and size on the sheet, in EMU, whatever the cells do.
+    #[non_exhaustive]
     Absolute {
         /// Distance from the sheet's left edge.
         x_emu: u64,
@@ -149,6 +171,35 @@ pub enum Anchor {
         /// Height in EMU.
         height_emu: u64,
     },
+}
+
+impl Anchor {
+    /// A [`Anchor::TwoCell`] anchor.
+    #[must_use]
+    pub const fn two_cell(anchor: TwoCellAnchor) -> Self {
+        Self::TwoCell(anchor)
+    }
+
+    /// An [`Anchor::OneCell`] anchor: a corner and a size in EMU.
+    #[must_use]
+    pub const fn one_cell(from: CellAnchor, width_emu: u64, height_emu: u64) -> Self {
+        Self::OneCell {
+            from,
+            width_emu,
+            height_emu,
+        }
+    }
+
+    /// An [`Anchor::Absolute`] anchor: a position and a size in EMU.
+    #[must_use]
+    pub const fn absolute(x_emu: u64, y_emu: u64, width_emu: u64, height_emu: u64) -> Self {
+        Self::Absolute {
+            x_emu,
+            y_emu,
+            width_emu,
+            height_emu,
+        }
+    }
 }
 
 /// One anchor of any type hosting one chart.

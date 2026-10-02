@@ -4,6 +4,17 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `GraphicFrame`, `CellAnchor` and `TwoCellAnchor` are
+  `#[non_exhaustive]`, as are the `Anchor::OneCell` and `Anchor::Absolute`
+  variants, so a field can be added later without breaking callers. Build them
+  with `GraphicFrame::new` (and `with_edit_as`), `CellAnchor::new` (and
+  `with_offsets`), `TwoCellAnchor::new`, and `Anchor::two_cell`, `one_cell` and
+  `absolute`.
+
 ## [0.2.0] - 2026-10-02
 
 ### Added

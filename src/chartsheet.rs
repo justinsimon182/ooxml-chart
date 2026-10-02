@@ -44,12 +44,7 @@ pub fn chartsheet_part(drawing_relationship_id: &str) -> Vec<u8> {
 #[must_use]
 pub fn chartsheet_drawing_part(frame: &GraphicFrame) -> Vec<u8> {
     drawing_part_with(&[(
-        Anchor::Absolute {
-            x_emu: 0,
-            y_emu: 0,
-            width_emu: CHARTSHEET_WIDTH_EMU,
-            height_emu: CHARTSHEET_HEIGHT_EMU,
-        },
+        Anchor::absolute(0, 0, CHARTSHEET_WIDTH_EMU, CHARTSHEET_HEIGHT_EMU),
         frame.clone(),
     )])
 }
