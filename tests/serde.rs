@@ -372,6 +372,24 @@ fn multi_level_categories_survive_a_round_trip() {
 }
 
 #[test]
+fn effects_survive_a_round_trip() {
+    use ooxml_chart::{AreaStyle, Effects, Glow, Shadow};
+    let effects = Effects::new()
+        .shadow(Shadow::new("010102").blur(6.0))
+        .glow(Glow::new("8E0DD1", 4.0))
+        .soft_edge(1.5);
+    let spec = ChartSpec::new(ChartKind::ColumnClustered)
+        .series(
+            Series::new(SeriesName::Literal("A".into()), "S!$C$2:$C$5")
+                .with_effects(effects.clone()),
+        )
+        .chart_area(AreaStyle::new().effects(effects));
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

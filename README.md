@@ -313,6 +313,35 @@ let part = ChartSpec::new(ChartKind::ColumnClustered)
 # Ok::<(), ooxml_chart::ChartError>(())
 ```
 
+## Shadow, glow and soft edges
+
+Series, the chart area, the plot area and the 3-D walls take effects. A shadow
+(outer or inner), a glow and a soft edge can be combined; each value is checked
+against the range Excel's own dialog allows:
+
+```rust
+use ooxml_chart::{
+    AreaStyle, ChartKind, ChartSpec, Effects, Glow, Series, SeriesName, Shadow,
+};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .series(
+        Series::new(SeriesName::Literal("Sales".into()), "'Sheet1'!$B$2:$B$5")
+            .with_color("8E0DD1")
+            .with_effects(Effects::new().glow(Glow::new("8E0DD1", 6.0))),
+    )
+    .chart_area(
+        AreaStyle::new()
+            .fill("F8F6F0")
+            .effects(Effects::new().shadow(Shadow::new("010102").blur(8.0).distance(4.0))),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Stock charts and a markers-only scatter chart draw no line for an effect to
+hang on, so they refuse series effects.
+
 ## A chart on its own sheet
 
 A chartsheet holds one chart and no cells. The chart part is the one above; the
