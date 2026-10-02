@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Chart-wide settings: `ChartSpec::rounded_corners`, `date_1904`, `language` and
+  `style` (1 to 48).
+- Line decorations: `drop_lines` (line and area), `high_low_lines` and
+  `up_down_bars` (line charts of two or more series), and `series_lines`
+  (stacked bar and column). Each is refused on a kind that cannot carry it.
+- Multi-level category axes: `Series::with_multi_level_categories` writes
+  `<c:multiLvlStrRef>`. No cache is written, and scatter and bubble are refused.
+- Chartsheets: `chartsheet_part`, `chartsheet_drawing_part`,
+  `chartsheet_content_types_override`, `workbook_chartsheet_relationship` and
+  `workbook_sheet_element` (which refuses sheet names Excel rejects).
+- Gallery grows to 87 parts; every part validates against the schemas and loads
+  in desktop Excel.
 - `scripts/excel_roundtrip.py` also saves each workbook back out of Excel and
   lists what Excel dropped or changed in the chart or drawing XML (`--verbose`
   for all of it, `--strict` to fail on it).

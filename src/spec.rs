@@ -369,6 +369,12 @@ pub struct Series {
     /// Marker shape and size in points (2-72).
     #[cfg_attr(feature = "serde", serde(default))]
     pub marker: Option<(MarkerSymbol, u8)>,
+    /// Read `categories` as several columns (or rows) of nested labels, such as
+    /// a year column beside a month column. Set with
+    /// [`Series::with_multi_level_categories`]. Excel reads the labels from the
+    /// sheet, so no cache is written and `categories_cache` is refused.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub multi_level_categories: bool,
     /// Category labels to cache in the part, so viewers that do not
     /// recalculate can still draw the axis.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -419,6 +425,7 @@ impl Series {
             line_width_pt: None,
             smooth: false,
             marker: None,
+            multi_level_categories: false,
             categories_cache: None,
             values_cache: None,
             name_cache: None,
@@ -436,6 +443,16 @@ impl Series {
     #[must_use]
     pub fn with_categories(mut self, reference: impl Into<String>) -> Self {
         self.categories = Some(reference.into());
+        self
+    }
+
+    /// Sets the categories to a range of two or more columns (or rows) read as
+    /// nested labels, e.g. `"'Sheet1'!$A$2:$B$13"`. Not for scatter or bubble
+    /// charts, and no category cache can accompany it.
+    #[must_use]
+    pub fn with_multi_level_categories(mut self, reference: impl Into<String>) -> Self {
+        self.categories = Some(reference.into());
+        self.multi_level_categories = true;
         self
     }
 
@@ -2375,6 +2392,20 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) stock_bars: Option<(String, String)>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) rounded_corners: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) date_1904: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) language: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) style: Option<u8>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) drop_lines: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) high_low_lines: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) series_lines: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) of_pie: Option<OfPie>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) view_3d: Option<View3D>,
@@ -2428,6 +2459,13 @@ impl ChartSpec {
             data_labels: None,
             hole_size: 50,
             stock_bars: None,
+            rounded_corners: false,
+            date_1904: false,
+            language: None,
+            style: None,
+            drop_lines: false,
+            high_low_lines: false,
+            series_lines: false,
             of_pie: None,
             view_3d: None,
             surface_bands: Vec::new(),
@@ -2683,6 +2721,67 @@ impl ChartSpec {
     #[must_use]
     pub fn stock_bars(mut self, up: impl Into<String>, down: impl Into<String>) -> Self {
         self.stock_bars = Some((up.into(), down.into()));
+        self
+    }
+
+    /// Colours the up bars (second series above the first) and down bars of a
+    /// line chart, as six-digit hex. The same bars as [`ChartSpec::stock_bars`].
+    /// Needs a plain line chart of at least two series.
+    #[must_use]
+    pub fn up_down_bars(self, up: impl Into<String>, down: impl Into<String>) -> Self {
+        self.stock_bars(up, down)
+    }
+
+    /// Rounds the corners of the chart's border. Excel's schema default is on;
+    /// this crate writes off unless asked.
+    #[must_use]
+    pub fn rounded_corners(mut self, on: bool) -> Self {
+        self.rounded_corners = on;
+        self
+    }
+
+    /// Dates are counted from 1904 rather than 1900. Set it when the workbook's
+    /// own date system is 1904, so a date axis reads the same.
+    #[must_use]
+    pub fn date_1904(mut self, on: bool) -> Self {
+        self.date_1904 = on;
+        self
+    }
+
+    /// The chart's language tag, e.g. `"en-US"`.
+    #[must_use]
+    pub fn language(mut self, tag: impl Into<String>) -> Self {
+        self.language = Some(tag.into());
+        self
+    }
+
+    /// Excel's built-in chart style, 1 to 48.
+    #[must_use]
+    pub fn style(mut self, index: u8) -> Self {
+        self.style = Some(index);
+        self
+    }
+
+    /// Drops a line from each point to the category axis. Plain line and area
+    /// charts only.
+    #[must_use]
+    pub fn drop_lines(mut self, on: bool) -> Self {
+        self.drop_lines = on;
+        self
+    }
+
+    /// Joins the highest and lowest point of each category. Plain line charts
+    /// of at least two series only.
+    #[must_use]
+    pub fn high_low_lines(mut self, on: bool) -> Self {
+        self.high_low_lines = on;
+        self
+    }
+
+    /// Joins each series' bar tops across a stacked bar or column chart.
+    #[must_use]
+    pub fn series_lines(mut self, on: bool) -> Self {
+        self.series_lines = on;
         self
     }
 
