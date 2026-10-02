@@ -173,45 +173,21 @@ fn run() {
     }
 
     // Drawings hosting a chart, one per anchor type.
-    let frame = || ooxml_chart::GraphicFrame {
-        id: 2,
-        name: "Chart 1".to_string(),
-        relationship_id: "rId1".to_string(),
-        edit_as: None,
-    };
-    let corner = ooxml_chart::CellAnchor {
-        col: 1,
-        col_offset_emu: 0,
-        row: 1,
-        row_offset_emu: 0,
-    };
-    let two = ooxml_chart::TwoCellAnchor {
-        from: corner,
-        to: ooxml_chart::CellAnchor {
-            col: 9,
-            col_offset_emu: 4762,
-            row: 20,
-            row_offset_emu: 9525,
-        },
-    };
+    let frame = || ooxml_chart::GraphicFrame::new(2, "Chart 1", "rId1");
+    let corner = ooxml_chart::CellAnchor::new(1, 1);
+    let two = ooxml_chart::TwoCellAnchor::new(
+        corner,
+        ooxml_chart::CellAnchor::new(9, 20).with_offsets(4762, 9525),
+    );
     let drawings = [
-        ("drawing_two_cell", ooxml_chart::Anchor::TwoCell(two)),
+        ("drawing_two_cell", ooxml_chart::Anchor::two_cell(two)),
         (
             "drawing_one_cell",
-            ooxml_chart::Anchor::OneCell {
-                from: corner,
-                width_emu: 5_000_000,
-                height_emu: 3_000_000,
-            },
+            ooxml_chart::Anchor::one_cell(corner, 5_000_000, 3_000_000),
         ),
         (
             "drawing_absolute",
-            ooxml_chart::Anchor::Absolute {
-                x_emu: 100_000,
-                y_emu: 200_000,
-                width_emu: 5_000_000,
-                height_emu: 3_000_000,
-            },
+            ooxml_chart::Anchor::absolute(100_000, 200_000, 5_000_000, 3_000_000),
         ),
     ];
     for (file, anchor) in drawings {
@@ -236,12 +212,7 @@ fn run() {
         ),
     ];
     for (file, object) in objects {
-        let anchor = ooxml_chart::Anchor::Absolute {
-            x_emu: 100_000,
-            y_emu: 200_000,
-            width_emu: 2_000_000,
-            height_emu: 800_000,
-        };
+        let anchor = ooxml_chart::Anchor::absolute(100_000, 200_000, 2_000_000, 800_000);
         let part = ooxml_chart::drawing_part_objects(&[(anchor, object)]);
         fs::write(dir.join(format!("{file}.xml")), part).expect("write drawing");
     }

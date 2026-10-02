@@ -148,6 +148,7 @@ impl RowMetrics {
 
 /// A position in the sheet: a cell, and an offset into it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CellAnchor {
     /// Zero-based column, as the drawing part writes it.
     pub col: u32,
@@ -159,13 +160,43 @@ pub struct CellAnchor {
     pub row_offset_emu: i64,
 }
 
+impl CellAnchor {
+    /// The top-left corner of the cell at zero-based `col` and `row`.
+    #[must_use]
+    pub const fn new(col: u32, row: u32) -> Self {
+        Self {
+            col,
+            col_offset_emu: 0,
+            row,
+            row_offset_emu: 0,
+        }
+    }
+
+    /// Moves the position into the cell by the given offsets, in EMU.
+    #[must_use]
+    pub const fn with_offsets(mut self, col_offset_emu: i64, row_offset_emu: i64) -> Self {
+        self.col_offset_emu = col_offset_emu;
+        self.row_offset_emu = row_offset_emu;
+        self
+    }
+}
+
 /// Where a chart starts and where it ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TwoCellAnchor {
     /// The top-left corner. Supplied by the caller and never moved.
     pub from: CellAnchor,
     /// The bottom-right corner, computed from the chart's pixel size.
     pub to: CellAnchor,
+}
+
+impl TwoCellAnchor {
+    /// An anchor from one corner to another.
+    #[must_use]
+    pub const fn new(from: CellAnchor, to: CellAnchor) -> Self {
+        Self { from, to }
+    }
 }
 
 /// Walks one axis (columns or rows) from `start_index`/`start_offset_emu`

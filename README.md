@@ -78,7 +78,7 @@ let metrics = RowMetrics::excel_default()
     .unknown(UnknownHeight::Refuse);
 
 let anchor = two_cell_anchor(
-    CellAnchor { col: 12, col_offset_emu: 0, row: 1, row_offset_emu: 0 },
+    CellAnchor::new(12, 1),
     (2300, 920),               // pixels
     &metrics,
     |row| if row > 2 { Some(42) } else { None },
@@ -260,13 +260,8 @@ use ooxml_chart::{
     Picture, TextBox, CHART_RELATIONSHIP_TYPE, IMAGE_RELATIONSHIP_TYPE,
 };
 
-let frame = GraphicFrame {
-    id: 2,
-    name: "Chart 1".into(),
-    relationship_id: "rId1".into(),
-    edit_as: None,
-};
-let at = |x_emu| Anchor::Absolute { x_emu, y_emu: 0, width_emu: 3_000_000, height_emu: 2_000_000 };
+let frame = GraphicFrame::new(2, "Chart 1", "rId1");
+let at = |x_emu| Anchor::absolute(x_emu, 0, 3_000_000, 2_000_000);
 let drawing = drawing_part_objects(&[
     (at(0), DrawingObject::Chart(frame)),
     (at(3_000_000), DrawingObject::Picture(Picture::new(3, "Logo", "rId2").description("Company logo"))),
@@ -329,12 +324,7 @@ use ooxml_chart::{
     workbook_chartsheet_relationship, workbook_sheet_element, GraphicFrame,
 };
 
-let frame = GraphicFrame {
-    id: 2,
-    name: "Chart 1".into(),
-    relationship_id: "rId1".into(),
-    edit_as: None,
-};
+let frame = GraphicFrame::new(2, "Chart 1", "rId1");
 let drawing = chartsheet_drawing_part(&frame);      // xl/drawings/drawing1.xml
 let sheet = chartsheet_part("rId1");                // xl/chartsheets/sheet1.xml
 let content_type = chartsheet_content_types_override("/xl/chartsheets/sheet1.xml");
