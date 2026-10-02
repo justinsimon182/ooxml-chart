@@ -3408,3 +3408,131 @@ mod multi_level {
         }
     }
 }
+
+// --- effects ----------------------------------------------------------------------------
+
+mod effects {
+    use super::*;
+    use ooxml_chart::{Effects, Glow, Shadow};
+
+    fn all() -> Effects {
+        Effects::new()
+            .shadow(
+                Shadow::new("010102")
+                    .blur(6.0)
+                    .distance(2.0)
+                    .angle(90)
+                    .opacity(50),
+            )
+            .inner_shadow(Shadow::new("0090B2"))
+            .glow(Glow::new("8e0dd1", 5.0).opacity(60))
+            .soft_edge(2.0)
+    }
+
+    #[test]
+    fn a_series_writes_effects_after_its_fill_in_schema_order() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_color("8E0DD1").with_effects(all())),
+        );
+        let want = concat!(
+            r#"<c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill><a:effectLst>"#,
+            r#"<a:glow rad="63500"><a:srgbClr val="8E0DD1"><a:alpha val="60000"/></a:srgbClr></a:glow>"#,
+            r#"<a:innerShdw blurRad="50800" dist="38100" dir="2700000">"#,
+            r#"<a:srgbClr val="0090B2"><a:alpha val="40000"/></a:srgbClr></a:innerShdw>"#,
+            r#"<a:outerShdw blurRad="76200" dist="25400" dir="5400000" algn="ctr" rotWithShape="0">"#,
+            r#"<a:srgbClr val="010102"><a:alpha val="50000"/></a:srgbClr></a:outerShdw>"#,
+            r#"<a:softEdge rad="25400"/></a:effectLst></c:spPr>"#,
+        );
+        assert!(xml.contains(want), "{xml}");
+    }
+
+    #[test]
+    fn effects_alone_still_open_a_shape_properties_element() {
+        let effects = Effects::new().shadow(Shadow::new("000000"));
+        for kind in [ChartKind::ColumnClustered, ChartKind::Pie, ChartKind::Line] {
+            let xml = render(ChartSpec::new(kind).series(series().with_effects(effects.clone())));
+            assert!(
+                xml.contains("<c:spPr><a:effectLst><a:outerShdw"),
+                "{kind:?}: {xml}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_series_puts_them_after_the_line() {
+        let xml = render(
+            ChartSpec::new(ChartKind::Line).series(
+                series()
+                    .with_color("8E0DD1")
+                    .with_effects(Effects::new().glow(Glow::new("8E0DD1", 3.0))),
+            ),
+        );
+        assert!(
+            xml.contains("<a:round/></a:ln><a:effectLst><a:glow"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn areas_and_walls_take_them_after_the_border() {
+        let xml = render(
+            column().chart_area(
+                AreaStyle::new()
+                    .fill("FFFFFF")
+                    .border("010102")
+                    .effects(Effects::new().shadow(Shadow::new("000000"))),
+            ),
+        );
+        assert!(xml.contains("</a:ln><a:effectLst><a:outerShdw"), "{xml}");
+    }
+
+    #[test]
+    fn no_effects_change_nothing() {
+        let plain = render(column());
+        let empty = render(
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_effects(Effects::new())),
+        );
+        assert_eq!(plain, empty);
+    }
+
+    #[test]
+    fn stock_and_markers_only_scatter_are_refused() {
+        let effects = Effects::new().shadow(Shadow::new("000000"));
+        for kind in [ChartKind::StockHighLowClose, ChartKind::Scatter] {
+            let spec = ChartSpec::new(kind)
+                .series(series().with_effects(effects.clone()))
+                .series(series())
+                .series(series());
+            assert!(
+                matches!(refused(spec), ChartError::Unsupported { .. }),
+                "{kind:?}"
+            );
+        }
+        let lines = ChartSpec::new(ChartKind::ScatterLines).series(series().with_effects(effects));
+        render(lines);
+    }
+
+    #[test]
+    fn nonsense_values_are_refused() {
+        let bad = [
+            Effects::new().shadow(Shadow::new("not a colour")),
+            Effects::new().shadow(Shadow::new("000000").blur(f64::NAN)),
+            Effects::new().shadow(Shadow::new("000000").blur(101.0)),
+            Effects::new().shadow(Shadow::new("000000").distance(-1.0)),
+            Effects::new().shadow(Shadow::new("000000").angle(360)),
+            Effects::new().shadow(Shadow::new("000000").opacity(101)),
+            Effects::new().glow(Glow::new("000000", 151.0)),
+            Effects::new().glow(Glow::new("000000", 3.0).opacity(101)),
+            Effects::new().soft_edge(f64::INFINITY),
+        ];
+        for effects in bad {
+            let spec = ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series().with_effects(effects.clone()));
+            refused(spec);
+            let area = column().plot_area(AreaStyle::new().effects(effects));
+            refused(area);
+        }
+    }
+}

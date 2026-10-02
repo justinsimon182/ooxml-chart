@@ -6,8 +6,9 @@
 //! fixed-seed linear congruential one, so a failure reproduces.
 
 use ooxml_chart::{
-    Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, DisplayUnit, ErrorAmount,
-    ErrorBars, LegendPosition, MarkerSymbol, OfPie, OfPieSplit, Plot, Series, SeriesName, View3D,
+    Axis, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DateUnit, DisplayUnit, Effects,
+    ErrorAmount, ErrorBars, Glow, LegendPosition, MarkerSymbol, OfPie, OfPieSplit, Plot, Series,
+    SeriesName, Shadow, View3D,
 };
 
 struct Rng {
@@ -182,6 +183,17 @@ fn series(rng: &mut Rng) -> Series {
     }
     if rng.chance(8) {
         item = item.with_error_bars(ErrorBars::new(ErrorAmount::Fixed(rng.number())));
+    }
+    if rng.chance(8) {
+        let shadow = Shadow::new(rng.color())
+            .blur(rng.number())
+            .angle(rng.below(400) as u16)
+            .opacity(rng.below(120) as u8);
+        item = item.with_effects(
+            Effects::new()
+                .shadow(shadow)
+                .glow(Glow::new(rng.color(), rng.number())),
+        );
     }
     item
 }

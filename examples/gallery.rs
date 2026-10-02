@@ -5,9 +5,9 @@
 
 use ooxml_chart::{
     AreaStyle, Axis, BarShape, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DataTable,
-    DateUnit, DisplayUnit, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Layout,
-    LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series, SeriesName,
-    TextStyle, TickLabels, Trendline, TrendlineKind, View3D,
+    DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Glow,
+    Layout, LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series,
+    SeriesName, Shadow, TextStyle, TickLabels, Trendline, TrendlineKind, View3D,
 };
 use ooxml_chart::{
     Gradient, LabelField, LabelPart, OfPie, OfPieSplit, Paint, Pattern, PatternKind,
@@ -721,6 +721,39 @@ fn run() {
                 .series_lines(true)
                 .series(series("North", "B", "8E0DD1"))
                 .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "series_shadow",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Series shadow")
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_effects(Effects::new().shadow(Shadow::new("010102"))),
+                ),
+        ),
+        (
+            "series_glow",
+            ChartSpec::new(ChartKind::Line).title("Series glow").series(
+                series("North", "B", "0090B2")
+                    .with_line_width(3.0)
+                    .with_effects(Effects::new().glow(Glow::new("28EAE4", 8.0))),
+            ),
+        ),
+        (
+            "area_effects",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Area effects")
+                .series(series("North", "B", "8E0DD1"))
+                .chart_area(
+                    AreaStyle::new()
+                        .fill("F8F6F0")
+                        .effects(Effects::new().shadow(Shadow::new("010102").blur(8.0))),
+                )
+                .plot_area(
+                    AreaStyle::new()
+                        .fill("FFFFFF")
+                        .effects(Effects::new().inner_shadow(Shadow::new("010102"))),
+                ),
         ),
         (
             "chart_flags",

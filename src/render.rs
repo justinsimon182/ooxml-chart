@@ -13,10 +13,10 @@ use crate::error::ChartError;
 use crate::reference;
 use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
-    DateUnit, DisplayUnit, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
+    DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
     LabelField, LabelPart, Layout, MarkerSymbol, OfPie, OfPieSplit, Paint, Plot, PointFormat,
-    PointLabel, Position, Series, SeriesName, TextStyle, TickLabels, Trendline, TrendlineKind,
-    View3D,
+    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, Trendline,
+    TrendlineKind, View3D,
 };
 use crate::xml::escape;
 
@@ -774,6 +774,15 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
     if let Some(points) = series.line_width_pt {
         check_line_width(points)?;
     }
+    if let Some(effects) = &series.effects {
+        // These draw no fill or line for an effect to hang on.
+        if plot.family == Family::Scatter && plot.kind == ChartKind::Scatter
+            || matches!(plot.family, Family::Stock { .. })
+        {
+            return unsupported(format!("series effects on {:?}", plot.kind));
+        }
+        check_effects(effects)?;
+    }
     if let Some((_, size)) = series.marker {
         check_range("marker size", i64::from(size), 2, 72)?;
     }
@@ -1081,7 +1090,35 @@ fn check_paint(paint: &Paint) -> Result<(), ChartError> {
     Ok(())
 }
 
+fn check_effects(effects: &Effects) -> Result<(), ChartError> {
+    let finite_emu = |field: &'static str, points: f64, max: i64| {
+        check_range(field, line_emu(points), 0, max * EMU_PER_POINT as i64)
+    };
+    for shadow in [&effects.shadow, &effects.inner_shadow]
+        .into_iter()
+        .flatten()
+    {
+        check_color(&shadow.color)?;
+        finite_emu("shadow blur in EMU", shadow.blur_pt, 100)?;
+        finite_emu("shadow distance in EMU", shadow.distance_pt, 200)?;
+        check_range("shadow angle", i64::from(shadow.angle), 0, 359)?;
+        check_range("shadow opacity", i64::from(shadow.opacity), 0, 100)?;
+    }
+    if let Some(glow) = &effects.glow {
+        check_color(&glow.color)?;
+        finite_emu("glow radius in EMU", glow.radius_pt, 150)?;
+        check_range("glow opacity", i64::from(glow.opacity), 0, 100)?;
+    }
+    if let Some(points) = effects.soft_edge_pt {
+        finite_emu("soft edge in EMU", points, 100)?;
+    }
+    Ok(())
+}
+
 fn check_area_style(style: &AreaStyle) -> Result<(), ChartError> {
+    if let Some(effects) = &style.effects {
+        check_effects(effects)?;
+    }
     for paint in [&style.fill, &style.border].into_iter().flatten() {
         check_paint(paint)?;
     }
@@ -1961,10 +1998,12 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             .as_ref()
             .map(fill_xml)
             .or_else(|| color.map(solid))
-            .map(|fill| format!("<c:spPr>{fill}</c:spPr>"))
-            .unwrap_or_default(),
+            .map_or_else(
+                || series_sp_pr("", series.effects.as_ref()),
+                |fill| series_sp_pr(&fill, series.effects.as_ref()),
+            ),
         Family::Pie | Family::Doughnut | Family::OfPie { .. } | Family::Surface { .. } => {
-            String::new()
+            series_sp_pr("", series.effects.as_ref())
         }
         Family::Stock { open } => {
             // The high-low line (and bars) draw the chart; the series' own
@@ -2000,9 +2039,7 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             } else {
                 None
             };
-            let sp_pr = line
-                .map(|line| format!("<c:spPr>{line}</c:spPr>"))
-                .unwrap_or_default();
+            let sp_pr = series_sp_pr(&line.unwrap_or_default(), series.effects.as_ref());
             format!("{sp_pr}{}", marker_xml(plot.kind, series, color))
         }
     }
@@ -2331,6 +2368,77 @@ fn fill_xml(paint: &Paint) -> String {
     }
 }
 
+/// `<a:effectLst>` in the schema's order (glow, inner shadow, outer shadow,
+/// soft edge), or nothing when no effect is set.
+fn effects_xml(effects: Option<&Effects>) -> String {
+    let Some(effects) = effects else {
+        return String::new();
+    };
+    let color = |rgb: &str, opacity: u8| {
+        format!(
+            r#"<a:srgbClr val="{}"><a:alpha val="{}"/></a:srgbClr>"#,
+            rgb.to_ascii_uppercase(),
+            u32::from(opacity) * 1000
+        )
+    };
+    let shadow = |tag: &str, shadow: &Shadow| {
+        // Only the outer shadow takes an alignment and rotation.
+        let extra = if tag == "outerShdw" {
+            r#" algn="ctr" rotWithShape="0""#
+        } else {
+            ""
+        };
+        format!(
+            r#"<a:{tag} blurRad="{}" dist="{}" dir="{}"{extra}>{}</a:{tag}>"#,
+            line_emu(shadow.blur_pt),
+            line_emu(shadow.distance_pt),
+            u32::from(shadow.angle) * 60_000,
+            color(&shadow.color, shadow.opacity)
+        )
+    };
+    let glow = effects
+        .glow
+        .as_ref()
+        .map(|glow| {
+            format!(
+                r#"<a:glow rad="{}">{}</a:glow>"#,
+                line_emu(glow.radius_pt),
+                color(&glow.color, glow.opacity)
+            )
+        })
+        .unwrap_or_default();
+    let inner = effects
+        .inner_shadow
+        .as_ref()
+        .map(|item| shadow("innerShdw", item))
+        .unwrap_or_default();
+    let outer = effects
+        .shadow
+        .as_ref()
+        .map(|item| shadow("outerShdw", item))
+        .unwrap_or_default();
+    let soft = effects
+        .soft_edge_pt
+        .map(|points| format!(r#"<a:softEdge rad="{}"/>"#, line_emu(points)))
+        .unwrap_or_default();
+    let inside = format!("{glow}{inner}{outer}{soft}");
+    if inside.is_empty() {
+        String::new()
+    } else {
+        format!("<a:effectLst>{inside}</a:effectLst>")
+    }
+}
+
+/// `<c:spPr>` around `inner` (fill and line) and the effects, or nothing.
+fn series_sp_pr(inner: &str, effects: Option<&Effects>) -> String {
+    let effects = effects_xml(effects);
+    if inner.is_empty() && effects.is_empty() {
+        String::new()
+    } else {
+        format!("<c:spPr>{inner}{effects}</c:spPr>")
+    }
+}
+
 fn sp_pr_xml(style: &AreaStyle) -> String {
     let fill = style.fill.as_ref().map(fill_xml).unwrap_or_default();
     let width = line_width_attr(style.border_width_pt);
@@ -2339,7 +2447,8 @@ fn sp_pr_xml(style: &AreaStyle) -> String {
         None if !width.is_empty() => format!("<a:ln{width}/>"),
         None => String::new(),
     };
-    format!("<c:spPr>{fill}{line}</c:spPr>")
+    let effects = effects_xml(style.effects.as_ref());
+    format!("<c:spPr>{fill}{line}{effects}</c:spPr>")
 }
 
 fn rich_title(text: &str, style: Option<&TextStyle>, position: Option<Position>) -> String {

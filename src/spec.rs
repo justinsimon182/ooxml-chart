@@ -360,6 +360,10 @@ pub struct Series {
     /// pie and doughnut, which colour points: see [`PointFormat::fill`].
     #[cfg_attr(feature = "serde", serde(default))]
     pub fill: Option<Paint>,
+    /// Shadow, glow and soft edge. Refused on stock charts and on a scatter
+    /// chart without lines, where the series draws no line to carry them.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub effects: Option<Effects>,
     /// Line width in points.
     #[cfg_attr(feature = "serde", serde(default))]
     pub line_width_pt: Option<f64>,
@@ -422,6 +426,7 @@ impl Series {
             values: values.into(),
             color: None,
             fill: None,
+            effects: None,
             line_width_pt: None,
             smooth: false,
             marker: None,
@@ -460,6 +465,13 @@ impl Series {
     #[must_use]
     pub fn with_fill(mut self, paint: Paint) -> Self {
         self.fill = Some(paint);
+        self
+    }
+
+    /// Adds shadow, glow or soft-edge effects to the series.
+    #[must_use]
+    pub fn with_effects(mut self, effects: Effects) -> Self {
+        self.effects = Some(effects);
         self
     }
 
@@ -1224,6 +1236,8 @@ pub struct AreaStyle {
     pub border: Option<Paint>,
     /// Border width in points.
     pub border_width_pt: Option<f64>,
+    /// Shadow, glow and soft edge.
+    pub effects: Option<Effects>,
 }
 
 impl AreaStyle {
@@ -1278,6 +1292,159 @@ impl AreaStyle {
     #[must_use]
     pub fn border_width(mut self, points: f64) -> Self {
         self.border_width_pt = Some(points);
+        self
+    }
+
+    /// Adds shadow, glow or soft-edge effects.
+    #[must_use]
+    pub fn effects(mut self, effects: Effects) -> Self {
+        self.effects = Some(effects);
+        self
+    }
+}
+
+/// A drop shadow, or an inner one.
+///
+/// Defaults match Excel's "Offset: Bottom Right" preset: 4 pt blur, 3 pt away
+/// at 45 degrees, black at 40 % opacity.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Shadow {
+    /// Colour, six hex digits without `#`.
+    pub color: String,
+    /// How far the edge is blurred, in points (0 to 100).
+    pub blur_pt: f64,
+    /// How far the shadow sits from the shape, in points (0 to 200).
+    pub distance_pt: f64,
+    /// Direction in degrees clockwise from the right (0 to 359).
+    pub angle: u16,
+    /// Opacity as a percentage (0 to 100).
+    pub opacity: u8,
+}
+
+impl Shadow {
+    /// A shadow of `rgb` with the default blur, distance, angle and opacity.
+    pub fn new(rgb: impl Into<String>) -> Self {
+        Self {
+            color: rgb.into(),
+            blur_pt: 4.0,
+            distance_pt: 3.0,
+            angle: 45,
+            opacity: 40,
+        }
+    }
+
+    /// Sets the blur in points.
+    #[must_use]
+    pub fn blur(mut self, points: f64) -> Self {
+        self.blur_pt = points;
+        self
+    }
+
+    /// Sets the distance from the shape in points.
+    #[must_use]
+    pub fn distance(mut self, points: f64) -> Self {
+        self.distance_pt = points;
+        self
+    }
+
+    /// Sets the direction in degrees clockwise from the right.
+    #[must_use]
+    pub fn angle(mut self, degrees: u16) -> Self {
+        self.angle = degrees;
+        self
+    }
+
+    /// Sets the opacity as a percentage.
+    #[must_use]
+    pub fn opacity(mut self, percent: u8) -> Self {
+        self.opacity = percent;
+        self
+    }
+}
+
+/// A soft coloured halo around a shape.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Glow {
+    /// Colour, six hex digits without `#`.
+    pub color: String,
+    /// How far the glow reaches, in points (0 to 150).
+    pub radius_pt: f64,
+    /// Opacity as a percentage (0 to 100).
+    pub opacity: u8,
+}
+
+impl Glow {
+    /// A glow of `rgb` reaching `radius_pt` points, at 40 % opacity.
+    pub fn new(rgb: impl Into<String>, radius_pt: f64) -> Self {
+        Self {
+            color: rgb.into(),
+            radius_pt,
+            opacity: 40,
+        }
+    }
+
+    /// Sets the opacity as a percentage.
+    #[must_use]
+    pub fn opacity(mut self, percent: u8) -> Self {
+        self.opacity = percent;
+        self
+    }
+}
+
+/// Shadow, glow and soft-edge effects on a shape. Each is optional.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct Effects {
+    /// A shadow behind the shape.
+    pub shadow: Option<Shadow>,
+    /// A shadow inside the shape's edge.
+    pub inner_shadow: Option<Shadow>,
+    /// A halo around the shape.
+    pub glow: Option<Glow>,
+    /// Fades the shape's edge over this many points (0 to 100).
+    pub soft_edge_pt: Option<f64>,
+}
+
+impl Effects {
+    /// No effects; chain the setters.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a shadow behind the shape.
+    #[must_use]
+    pub fn shadow(mut self, shadow: Shadow) -> Self {
+        self.shadow = Some(shadow);
+        self
+    }
+
+    /// Adds a shadow inside the shape's edge.
+    #[must_use]
+    pub fn inner_shadow(mut self, shadow: Shadow) -> Self {
+        self.inner_shadow = Some(shadow);
+        self
+    }
+
+    /// Adds a glow.
+    #[must_use]
+    pub fn glow(mut self, glow: Glow) -> Self {
+        self.glow = Some(glow);
+        self
+    }
+
+    /// Fades the edge over `points`.
+    #[must_use]
+    pub fn soft_edge(mut self, points: f64) -> Self {
+        self.soft_edge_pt = Some(points);
         self
     }
 }

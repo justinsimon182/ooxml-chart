@@ -4,6 +4,16 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Effects: `Effects` (outer and inner `Shadow`, `Glow`, soft edge) on a series
+  (`Series::with_effects`) and on the chart area, plot area and 3-D walls
+  (`AreaStyle::effects`). Values are range-checked; stock charts and a
+  markers-only scatter refuse series effects.
+- Gallery grows to 90 parts.
+
 ## [0.3.0] - 2026-10-02
 
 ### Changed
