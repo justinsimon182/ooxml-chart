@@ -404,6 +404,22 @@ fn picture_fills_survive_a_round_trip() {
 }
 
 #[test]
+fn title_runs_survive_a_round_trip() {
+    use ooxml_chart::{Axis, TextStyle, TitleRun};
+    let runs = [
+        TitleRun::new("Sales ").style(TextStyle::new().bold(true)),
+        TitleRun::new("by region"),
+    ];
+    let spec = ChartSpec::new(ChartKind::ColumnClustered)
+        .series(Series::new(SeriesName::Literal("A".into()), "S!$C$2:$C$5"))
+        .title_runs(runs.clone())
+        .value_axis(Axis::default().title_runs(runs));
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

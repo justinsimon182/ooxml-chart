@@ -4,6 +4,17 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Mixed-format titles: `TitleRun` and `ChartSpec::title_runs` /
+  `Axis::title_runs` write a title of several runs, each with its own
+  `TextStyle` (a run with none takes the title's `title_style`). A newline in a
+  run starts a new paragraph. Giving both `title` and `title_runs`, or runs
+  with no text, is refused. `title_position` works with either.
+- Gallery grows to 94 parts.
+
 ## [0.6.0] - 2026-10-20
 
 ### Added

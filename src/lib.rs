@@ -70,8 +70,8 @@ pub use spec::{
     DataTable, DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars,
     ErrorValues, Glow, Gradient, GradientStop, LabelField, LabelPart, Layout, LegendPosition,
     MarkerSymbol, OfPie, OfPieSplit, Paint, Pattern, PatternKind, PictureFill, Plot, PointFormat,
-    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TickMark, Trendline,
-    TrendlineKind, View3D,
+    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TickMark, TitleRun,
+    Trendline, TrendlineKind, View3D,
 };
 pub use template::TemplateChart;
 

@@ -7,7 +7,7 @@ use ooxml_chart::{
     AreaStyle, Axis, BarShape, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DataTable,
     DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Glow,
     Layout, LegendPosition, MarkerSymbol, PictureFill, Plot, PointFormat, PointLabel, Position,
-    Series, SeriesName, Shadow, TextStyle, TickLabels, Trendline, TrendlineKind, View3D,
+    Series, SeriesName, Shadow, TextStyle, TickLabels, TitleRun, Trendline, TrendlineKind, View3D,
 };
 use ooxml_chart::{
     Gradient, LabelField, LabelPart, OfPie, OfPieSplit, Paint, Pattern, PatternKind,
@@ -741,6 +741,20 @@ fn run() {
                     AreaStyle::new().fill_paint(Paint::Picture(PictureFill::new("rId1").tiled())),
                 )
                 .plot_area(AreaStyle::new().fill_paint(Paint::Picture(PictureFill::new("rId1")))),
+        ),
+        (
+            "title_runs",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title_runs([
+                    TitleRun::new("Sales ").style(TextStyle::new().bold(true).size(16.0)),
+                    TitleRun::new("by region\n").style(TextStyle::new().size(12.0).color("0090B2")),
+                    TitleRun::new("FY26").style(TextStyle::new().italic(true).size(10.0)),
+                ])
+                .value_axis(Axis::default().title_runs([
+                    TitleRun::new("Units ").style(TextStyle::new().bold(true)),
+                    TitleRun::new("(thousands)"),
+                ]))
+                .series(series("North", "B", "8E0DD1")),
         ),
         (
             "point_effects",

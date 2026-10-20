@@ -140,6 +140,27 @@ hide, reword, move or restyle one data label, `Trendline`, `ErrorBars`, `Layout`
 date axes,
 tick and label options.
 
+## Mixed-format titles
+
+A title can hold several runs, each with its own formatting. A run with no
+style takes `title_style`, and a newline starts a new line:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName, TextStyle, TitleRun};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .title_runs([
+        TitleRun::new("Sales ").style(TextStyle::new().bold(true).size(16.0)),
+        TitleRun::new("by region").style(TextStyle::new().color("0090B2")),
+    ])
+    .series(Series::new(SeriesName::Literal("North".into()), "'Sheet1'!$B$2:$B$5"))
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Axis titles take `Axis::title_runs` the same way. Use `title` or `title_runs`,
+not both.
+
 ## Combination charts
 
 ```rust
