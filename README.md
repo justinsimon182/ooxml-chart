@@ -11,7 +11,7 @@ crate small enough to depend on: the only dependency is `thiserror`.
 
 ```toml
 [dependencies]
-ooxml-chart = "0.6"
+ooxml-chart = "0.7"
 ```
 
 ## A chart in ten lines
@@ -415,7 +415,7 @@ takes the Excel default. A misspelt field is an error, not silently ignored.
 
 ```toml
 [dependencies]
-ooxml-chart = { version = "0.6", features = ["serde"] }
+ooxml-chart = { version = "0.7", features = ["serde"] }
 ```
 
 ```json
