@@ -480,6 +480,18 @@ pub fn drawing_relationships_typed(entries: &[(String, &str, String)]) -> Vec<u8
     out.into_bytes()
 }
 
+/// A chart's `_rels` part: one entry per image its fills use, as
+/// `(id, target)` with targets such as `"../media/image1.png"`. Store it at
+/// `xl/charts/_rels/chartN.xml.rels`.
+#[must_use]
+pub fn chart_relationships(images: &[(String, String)]) -> Vec<u8> {
+    let entries: Vec<_> = images
+        .iter()
+        .map(|(id, target)| (id.clone(), IMAGE_RELATIONSHIP_TYPE, target.clone()))
+        .collect();
+    drawing_relationships_typed(&entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

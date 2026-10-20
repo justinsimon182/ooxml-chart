@@ -980,6 +980,46 @@ pub enum Paint {
     Gradient(Gradient),
     /// A two-colour pattern.
     Pattern(Pattern),
+    /// An image, reached through a relationship on the chart part. A fill
+    /// only: lines refuse it.
+    Picture(PictureFill),
+}
+
+/// An image that fills a shape: bars, areas, slices, bubbles and the chart,
+/// plot area and 3-D walls.
+///
+/// The image bytes are a package part of your own (`/xl/media/image1.png`).
+/// Point the chart part at it with an entry of type
+/// [`IMAGE_RELATIONSHIP_TYPE`](crate::IMAGE_RELATIONSHIP_TYPE) in the chart's
+/// `_rels` part; [`chart_relationships`](crate::chart_relationships) writes
+/// that part.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct PictureFill {
+    /// The relationship on the chart part that reaches the image, e.g. `"rId1"`.
+    pub relationship_id: String,
+    /// Repeat the image at its own size instead of stretching it to fit.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tile: bool,
+}
+
+impl PictureFill {
+    /// An image stretched to fill the shape, reached by `relationship_id`.
+    pub fn new(relationship_id: impl Into<String>) -> Self {
+        Self {
+            relationship_id: relationship_id.into(),
+            tile: false,
+        }
+    }
+
+    /// Repeats the image instead of stretching it.
+    #[must_use]
+    pub fn tiled(mut self) -> Self {
+        self.tile = true;
+        self
+    }
 }
 
 /// One colour stop of a [`Gradient`].

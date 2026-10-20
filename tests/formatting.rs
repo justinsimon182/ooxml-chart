@@ -3596,3 +3596,89 @@ mod point_effects {
         refused(ChartSpec::new(ChartKind::ColumnClustered).series(series().with_point(0, bad)));
     }
 }
+
+// --- picture fills ------------------------------------------------------------------------
+
+mod picture_fills {
+    use super::*;
+    use ooxml_chart::{chart_relationships, Paint, PictureFill};
+
+    const STRETCH: &str =
+        r#"<a:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"#;
+
+    fn picture() -> Paint {
+        Paint::Picture(PictureFill::new("rId1"))
+    }
+
+    #[test]
+    fn a_series_fill_points_at_its_image_and_stretches() {
+        let xml = render(
+            ChartSpec::new(ChartKind::ColumnClustered).series(series().with_fill(picture())),
+        );
+        assert!(
+            xml.contains(&format!("<c:spPr>{STRETCH}</c:spPr>")),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_tiled_fill_repeats_at_its_own_size() {
+        let paint = Paint::Picture(PictureFill::new("rId9").tiled());
+        let xml = render(column().chart_area(AreaStyle::new().fill_paint(paint)));
+        assert!(
+            xml.contains(r#"<a:blipFill><a:blip r:embed="rId9"/><a:tile tx="0" ty="0" sx="100000" sy="100000" flip="none" algn="tl"/></a:blipFill>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn areas_walls_points_and_slices_take_it() {
+        let area = render(column().plot_area(AreaStyle::new().fill_paint(picture())));
+        assert!(area.contains(STRETCH), "{area}");
+        let slice = render(
+            ChartSpec::new(ChartKind::Pie)
+                .series(series().with_point(0, PointFormat::new().fill(picture()))),
+        );
+        assert!(
+            slice.contains(&format!(r#"<c:dPt><c:idx val="0"/><c:spPr>{STRETCH}"#)),
+            "{slice}"
+        );
+    }
+
+    #[test]
+    fn a_line_cannot_be_drawn_with_a_picture() {
+        let border = column().chart_area(AreaStyle::new().border_paint(picture()));
+        let axis = column().value_axis(Axis::default().line_paint(picture()));
+        for spec in [border, axis] {
+            assert!(matches!(refused(spec), ChartError::InvalidFill { .. }));
+        }
+    }
+
+    #[test]
+    fn a_line_like_series_fill_is_still_refused() {
+        let spec = ChartSpec::new(ChartKind::Line).series(series().with_fill(picture()));
+        assert!(matches!(refused(spec), ChartError::Unsupported { .. }));
+    }
+
+    #[test]
+    fn a_bad_relationship_id_is_refused_not_written() {
+        for id in ["", "1abc", "r Id", "r\"Id", "<x/>"] {
+            let paint = Paint::Picture(PictureFill::new(id));
+            let spec = column().chart_area(AreaStyle::new().fill_paint(paint));
+            assert!(
+                matches!(refused(spec), ChartError::InvalidFill { .. }),
+                "{id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_chart_rels_part_reaches_each_image() {
+        let rels = chart_relationships(&[("rId1".into(), "../media/image1.png".into())]);
+        let rels = String::from_utf8(rels).expect("utf-8");
+        assert!(
+            rels.contains(r#"<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>"#),
+            "{rels}"
+        );
+    }
+}

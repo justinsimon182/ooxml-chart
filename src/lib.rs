@@ -56,10 +56,11 @@ pub use chartsheet::{
     CHARTSHEET_RELATIONSHIP_TYPE,
 };
 pub use drawing::{
-    anchor_xml, anchor_xml_for, drawing_content_types_override, drawing_object_xml, drawing_part,
-    drawing_part_objects, drawing_part_with, drawing_relationships, drawing_relationships_typed,
-    worksheet_drawing_element, worksheet_drawing_relationship, Anchor, DrawingObject, GraphicFrame,
-    Picture, TextBox, CHART_RELATIONSHIP_TYPE, DRAWING_CONTENT_TYPE, DRAWING_RELATIONSHIP_TYPE,
+    anchor_xml, anchor_xml_for, chart_relationships, drawing_content_types_override,
+    drawing_object_xml, drawing_part, drawing_part_objects, drawing_part_with,
+    drawing_relationships, drawing_relationships_typed, worksheet_drawing_element,
+    worksheet_drawing_relationship, Anchor, DrawingObject, GraphicFrame, Picture, TextBox,
+    CHART_RELATIONSHIP_TYPE, DRAWING_CONTENT_TYPE, DRAWING_RELATIONSHIP_TYPE,
     IMAGE_RELATIONSHIP_TYPE,
 };
 pub use error::ChartError;
@@ -68,8 +69,8 @@ pub use spec::{
     AreaStyle, Axis, BarShape, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels,
     DataTable, DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars,
     ErrorValues, Glow, Gradient, GradientStop, LabelField, LabelPart, Layout, LegendPosition,
-    MarkerSymbol, OfPie, OfPieSplit, Paint, Pattern, PatternKind, Plot, PointFormat, PointLabel,
-    Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TickMark, Trendline,
+    MarkerSymbol, OfPie, OfPieSplit, Paint, Pattern, PatternKind, PictureFill, Plot, PointFormat,
+    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TickMark, Trendline,
     TrendlineKind, View3D,
 };
 pub use template::TemplateChart;

@@ -1094,8 +1094,32 @@ fn check_paint(paint: &Paint) -> Result<(), ChartError> {
             check_color(&pattern.foreground)?;
             check_color(&pattern.background)?;
         }
+        Paint::Picture(picture) => {
+            // An `xsd:ID`: a letter or underscore, then letters, digits, `_`, `-`, `.`.
+            let id = &picture.relationship_id;
+            let mut chars = id.chars();
+            let valid = chars
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+                && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+            if !valid {
+                return Err(ChartError::InvalidFill {
+                    reason: "a picture fill needs a relationship id such as rId1",
+                });
+            }
+        }
     }
     Ok(())
+}
+
+/// Like [`check_paint`], for a line, which cannot be drawn with a picture.
+fn check_line_paint(paint: &Paint) -> Result<(), ChartError> {
+    if matches!(paint, Paint::Picture(_)) {
+        return Err(ChartError::InvalidFill {
+            reason: "a line cannot be drawn with a picture",
+        });
+    }
+    check_paint(paint)
 }
 
 fn check_effects(effects: &Effects) -> Result<(), ChartError> {
@@ -1127,8 +1151,11 @@ fn check_area_style(style: &AreaStyle) -> Result<(), ChartError> {
     if let Some(effects) = &style.effects {
         check_effects(effects)?;
     }
-    for paint in [&style.fill, &style.border].into_iter().flatten() {
+    if let Some(paint) = &style.fill {
         check_paint(paint)?;
+    }
+    if let Some(paint) = &style.border {
+        check_line_paint(paint)?;
     }
     if let Some(points) = style.border_width_pt {
         check_line_width(points)?;
@@ -1239,7 +1266,7 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
         check_position(position)?;
     }
     if let Some(paint) = &axis.line {
-        check_paint(paint)?;
+        check_line_paint(paint)?;
     }
     if let Some(points) = axis.line_width_pt {
         check_line_width(points)?;
@@ -2365,6 +2392,17 @@ fn fill_xml(paint: &Paint) -> String {
             format!(
                 r#"<a:gradFill rotWithShape="1"><a:gsLst>{stops}</a:gsLst><a:lin ang="{}" scaled="0"/></a:gradFill>"#,
                 u32::from(gradient.angle) * 60_000
+            )
+        }
+        Paint::Picture(picture) => {
+            let mode = if picture.tile {
+                r#"<a:tile tx="0" ty="0" sx="100000" sy="100000" flip="none" algn="tl"/>"#
+            } else {
+                "<a:stretch><a:fillRect/></a:stretch>"
+            };
+            format!(
+                r#"<a:blipFill><a:blip r:embed="{}"/>{mode}</a:blipFill>"#,
+                escape(&picture.relationship_id)
             )
         }
         Paint::Pattern(pattern) => format!(

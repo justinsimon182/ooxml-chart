@@ -6,8 +6,8 @@
 use ooxml_chart::{
     AreaStyle, Axis, BarShape, ChartKind, ChartSpec, DataLabelPosition, DataLabels, DataTable,
     DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorBarSide, ErrorBars, ErrorValues, Glow,
-    Layout, LegendPosition, MarkerSymbol, Plot, PointFormat, PointLabel, Position, Series,
-    SeriesName, Shadow, TextStyle, TickLabels, Trendline, TrendlineKind, View3D,
+    Layout, LegendPosition, MarkerSymbol, PictureFill, Plot, PointFormat, PointLabel, Position,
+    Series, SeriesName, Shadow, TextStyle, TickLabels, Trendline, TrendlineKind, View3D,
 };
 use ooxml_chart::{
     Gradient, LabelField, LabelPart, OfPie, OfPieSplit, Paint, Pattern, PatternKind,
@@ -721,6 +721,26 @@ fn run() {
                 .series_lines(true)
                 .series(series("North", "B", "8E0DD1"))
                 .series(series("South", "C", "0090B2")),
+        ),
+        (
+            // The chart part must reach the image as rId1 (see chart_relationships).
+            "picture_fill_series",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Picture fill")
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_fill(Paint::Picture(PictureFill::new("rId1"))),
+                ),
+        ),
+        (
+            "picture_fill_areas",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Picture fill, tiled")
+                .series(series("North", "B", "8E0DD1"))
+                .chart_area(
+                    AreaStyle::new().fill_paint(Paint::Picture(PictureFill::new("rId1").tiled())),
+                )
+                .plot_area(AreaStyle::new().fill_paint(Paint::Picture(PictureFill::new("rId1")))),
         ),
         (
             "point_effects",
