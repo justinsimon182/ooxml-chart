@@ -3682,3 +3682,91 @@ mod picture_fills {
         );
     }
 }
+
+// --- mixed-format titles --------------------------------------------------------------------
+
+mod title_runs {
+    use super::*;
+    use ooxml_chart::TitleRun;
+
+    fn bold() -> TextStyle {
+        TextStyle::new().bold(true).size(14.0)
+    }
+
+    #[test]
+    fn each_run_keeps_its_own_formatting_in_one_paragraph() {
+        let xml = render(column().title_runs([
+            TitleRun::new("Sales ").style(bold()),
+            TitleRun::new("by region").style(TextStyle::new().color("0090B2")),
+        ]));
+        let want = concat!(
+            r#"<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p>"#,
+            r#"<a:r><a:rPr lang="en-US" sz="1400" b="1"/><a:t>Sales </a:t></a:r>"#,
+            r#"<a:r><a:rPr lang="en-US"><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></a:rPr><a:t>by region</a:t></a:r>"#,
+            r#"</a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>"#,
+        );
+        assert!(xml.contains(want), "{xml}");
+    }
+
+    #[test]
+    fn a_run_without_a_style_takes_the_title_style() {
+        let xml = render(
+            column()
+                .title_style(TextStyle::new().italic(true))
+                .title_runs([TitleRun::new("a"), TitleRun::new("b").style(bold())]),
+        );
+        assert!(
+            xml.contains(r#"<a:rPr lang="en-US" i="1"/><a:t>a</a:t>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<a:rPr lang="en-US" sz="1400" b="1"/><a:t>b</a:t>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_newline_starts_a_paragraph_and_text_is_escaped() {
+        let xml = render(column().title_runs([TitleRun::new("a & b\nc\n\nd")]));
+        assert!(
+            xml.contains("<a:p><a:r><a:t>a &amp; b</a:t></a:r></a:p><a:p><a:r><a:t>c</a:t></a:r></a:p><a:p></a:p><a:p><a:r><a:t>d</a:t></a:r></a:p>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_plain_title_is_written_as_before() {
+        let xml = render(column().title("Plain"));
+        assert!(
+            xml.contains(r#"<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Plain</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>"#),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn an_axis_takes_runs_and_a_position_counts_as_a_title() {
+        let axis = Axis::default()
+            .title_runs([TitleRun::new("Units ").style(bold()), TitleRun::new("(k)")]);
+        let xml = render(column().value_axis(axis));
+        assert!(xml.contains("<a:t>Units </a:t>"), "{xml}");
+        assert!(xml.contains("<a:t>(k)</a:t>"), "{xml}");
+        let placed = column()
+            .title_runs([TitleRun::new("T")])
+            .title_position(ooxml_chart::Position::new(0.1, 0.05));
+        render(placed);
+    }
+
+    #[test]
+    fn nonsense_is_refused() {
+        let both = column().title("x").title_runs([TitleRun::new("y")]);
+        let empty = column().title_runs([]);
+        let blank = column().title_runs([TitleRun::new("")]);
+        let bad_style =
+            column().title_runs([TitleRun::new("x").style(TextStyle::new().color("nope"))]);
+        let axis_both =
+            column().value_axis(Axis::default().title("x").title_runs([TitleRun::new("y")]));
+        for spec in [both, empty, blank, bad_style, axis_both] {
+            refused(spec);
+        }
+    }
+}

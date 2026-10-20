@@ -15,7 +15,7 @@ use crate::spec::{
     AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
     DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
     LabelField, LabelPart, Layout, MarkerSymbol, OfPie, OfPieSplit, Paint, Plot, PointFormat,
-    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, Trendline,
+    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TitleRun, Trendline,
     TrendlineKind, View3D,
 };
 use crate::xml::escape;
@@ -317,12 +317,12 @@ pub(crate) fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     out.push_str(HEADER);
     out.push_str(&chart_flags_xml(spec));
     out.push_str("<c:chart>");
-    if let Some(title) = &spec.title {
-        out.push_str(&title_xml(
-            title,
-            spec.title_style.as_ref(),
-            spec.title_position,
-        ));
+    if let Some(runs) = title_runs_of(
+        spec.title.as_ref(),
+        spec.title_runs.as_ref(),
+        spec.title_style.as_ref(),
+    ) {
+        out.push_str(&title_xml(&runs, spec.title_position));
     }
     match (&spec.view_3d, plots[0].family) {
         // A contour is a surface seen from straight above.
@@ -508,8 +508,9 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             check_text_style(style)?;
         }
     }
+    check_title_runs(spec.title.as_ref(), spec.title_runs.as_ref())?;
     if let Some(position) = &spec.title_position {
-        if spec.title.is_none() {
+        if spec.title.is_none() && spec.title_runs.is_none() {
             return unsupported("a title position with no title".to_string());
         }
         check_position(position)?;
@@ -1010,6 +1011,20 @@ fn check_color(color: &str) -> Result<(), ChartError> {
     }
 }
 
+fn check_title_runs(text: Option<&String>, runs: Option<&Vec<TitleRun>>) -> Result<(), ChartError> {
+    let Some(runs) = runs else { return Ok(()) };
+    if text.is_some() {
+        return unsupported("both a title and title runs".to_string());
+    }
+    if runs.iter().all(|run| run.text.is_empty()) {
+        return unsupported("title runs with no text".to_string());
+    }
+    for style in runs.iter().filter_map(|run| run.style.as_ref()) {
+        check_text_style(style)?;
+    }
+    Ok(())
+}
+
 fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
     if let Some(size) = style.size_pt {
         // Hundredths of a point in the file; a NaN size becomes -1.
@@ -1257,8 +1272,9 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
     if let Some(degrees) = axis.label_rotation {
         check_range("label rotation", i64::from(degrees), -90, 90)?;
     }
+    check_title_runs(axis.title.as_ref(), axis.title_runs.as_ref())?;
     if let Some(position) = &axis.title_position {
-        if axis.title.is_none() {
+        if axis.title.is_none() && axis.title_runs.is_none() {
             return Err(ChartError::Unsupported {
                 what: "an axis title position with no axis title".to_string(),
             });
@@ -2497,21 +2513,52 @@ fn sp_pr_xml(style: &AreaStyle) -> String {
     format!("<c:spPr>{fill}{line}{effects}</c:spPr>")
 }
 
-fn rich_title(text: &str, style: Option<&TextStyle>, position: Option<Position>) -> String {
-    let run_props = style
-        .map(|style| run_props("rPr", r#" lang="en-US""#, style))
-        .unwrap_or_default();
+/// A title's runs: `runs` when given, else `text` as one run. A run with no
+/// style takes `style`. `None` when there is no title.
+fn title_runs_of<'a>(
+    text: Option<&'a String>,
+    runs: Option<&'a Vec<TitleRun>>,
+    style: Option<&'a TextStyle>,
+) -> Option<Vec<(&'a str, Option<&'a TextStyle>)>> {
+    match (runs, text) {
+        (Some(runs), _) => Some(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.style.as_ref().or(style)))
+                .collect(),
+        ),
+        (None, Some(text)) => Some(vec![(text.as_str(), style)]),
+        (None, None) => None,
+    }
+}
+
+/// `<c:tx>` and the rest of a title's body. A newline in a run starts a new
+/// paragraph; the text after it keeps the formatting of the run it is in.
+fn rich_title(runs: &[(&str, Option<&TextStyle>)], position: Option<Position>) -> String {
+    let mut paragraphs = String::from("<a:p>");
+    for (text, style) in runs {
+        let props = style
+            .map(|style| run_props("rPr", r#" lang="en-US""#, style))
+            .unwrap_or_default();
+        for (index, line) in text.split('\n').enumerate() {
+            if index > 0 {
+                paragraphs.push_str("</a:p><a:p>");
+            }
+            if !line.is_empty() {
+                paragraphs.push_str(&format!("<a:r>{props}<a:t>{}</a:t></a:r>", escape(line)));
+            }
+        }
+    }
+    paragraphs.push_str("</a:p>");
     format!(
-        "<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r>{run_props}<a:t>{}</a:t></a:r></a:p></c:rich></c:tx>{}<c:overlay val=\"0\"/>",
-        escape(text),
+        "<c:tx><c:rich><a:bodyPr/><a:lstStyle/>{paragraphs}</c:rich></c:tx>{}<c:overlay val=\"0\"/>",
         title_layout_xml(position)
     )
 }
 
-fn title_xml(text: &str, style: Option<&TextStyle>, position: Option<Position>) -> String {
+fn title_xml(runs: &[(&str, Option<&TextStyle>)], position: Option<Position>) -> String {
     format!(
         r#"<c:title>{}</c:title><c:autoTitleDeleted val="0"/>"#,
-        rich_title(text, style, position)
+        rich_title(runs, position)
     )
 }
 
@@ -2669,16 +2716,18 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
     } else {
         ""
     };
-    let title = axis
-        .title
-        .as_ref()
-        .map(|text| {
-            format!(
-                "<c:title>{}</c:title>",
-                rich_title(text, axis.title_style.as_ref(), axis.title_position)
-            )
-        })
-        .unwrap_or_default();
+    let title = title_runs_of(
+        axis.title.as_ref(),
+        axis.title_runs.as_ref(),
+        axis.title_style.as_ref(),
+    )
+    .map(|runs| {
+        format!(
+            "<c:title>{}</c:title>",
+            rich_title(&runs, axis.title_position)
+        )
+    })
+    .unwrap_or_default();
     let number_format = axis
         .number_format
         .as_ref()

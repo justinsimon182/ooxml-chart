@@ -920,6 +920,40 @@ pub struct TextStyle {
     pub font: Option<String>,
 }
 
+/// One run of a title: a piece of text with its own formatting.
+///
+/// Give a title several runs to mix formats in it, e.g. a bold word followed
+/// by a smaller grey one. A run with no style takes the title's own
+/// `title_style`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct TitleRun {
+    /// The run's text. A newline starts a new line of the title.
+    pub text: String,
+    /// This run's formatting. `None` uses the title's `title_style`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub style: Option<TextStyle>,
+}
+
+impl TitleRun {
+    /// A run that takes the title's style.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            style: None,
+        }
+    }
+
+    /// Gives this run its own formatting.
+    #[must_use]
+    pub fn style(mut self, style: TextStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
 impl TextStyle {
     /// An empty style; chain the setters.
     pub fn new() -> Self {
@@ -1670,6 +1704,9 @@ impl LegendPosition {
 pub struct Axis {
     /// An axis title, if any.
     pub title: Option<String>,
+    /// An axis title of several differently formatted runs. Use this or
+    /// `title`, not both.
+    pub title_runs: Option<Vec<TitleRun>>,
     /// Whether to draw major gridlines across the plot from this axis.
     pub major_gridlines: bool,
     /// Whether to draw minor gridlines.
@@ -1747,6 +1784,7 @@ impl Default for Axis {
     fn default() -> Self {
         Self {
             title: None,
+            title_runs: None,
             major_gridlines: false,
             minor_gridlines: false,
             visible: true,
@@ -1882,6 +1920,14 @@ impl Axis {
     #[must_use]
     pub fn label_rotation(mut self, degrees: i16) -> Self {
         self.label_rotation = Some(degrees);
+        self
+    }
+
+    /// Titles the axis with several runs, each with its own formatting. Use
+    /// this or [`Axis::title`], not both.
+    #[must_use]
+    pub fn title_runs(mut self, runs: impl IntoIterator<Item = TitleRun>) -> Self {
+        self.title_runs = Some(runs.into_iter().collect());
         self
     }
 
@@ -2591,6 +2637,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) title_runs: Option<Vec<TitleRun>>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) series: Vec<Series>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) legend: LegendPosition,
@@ -2667,6 +2715,7 @@ impl ChartSpec {
         Self {
             kind,
             title: None,
+            title_runs: None,
             series: Vec::new(),
             legend: LegendPosition::Right,
             category_axis: Axis::default(),
@@ -2738,6 +2787,14 @@ impl ChartSpec {
     #[must_use]
     pub fn title(mut self, text: impl Into<String>) -> Self {
         self.title = Some(text.into());
+        self
+    }
+
+    /// Sets a chart title of several runs, each with its own formatting. Use
+    /// this or [`ChartSpec::title`], not both.
+    #[must_use]
+    pub fn title_runs(mut self, runs: impl IntoIterator<Item = TitleRun>) -> Self {
+        self.title_runs = Some(runs.into_iter().collect());
         self
     }
 
