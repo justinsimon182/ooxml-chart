@@ -72,6 +72,7 @@ does not read, write, or zip `.xlsx` packages.
 | `[Content_Types].xml` entry for a chart part | Done — `ChartPart::content_types_override` |
 | Drawing content-type and worksheet-relationship constants | Done (`DRAWING_CONTENT_TYPE`, `worksheet_drawing_relationship`) |
 | Mixed-format title and axis-title text (several runs, each with its own style) | Done (`TitleRun`, `title_runs`) |
+| Chart style and colour parts (`style1.xml`, `colors1.xml`) | Done (`ChartStyle`, `ChartColors`) |
 | Picture fills (stretched or tiled) on series, points, chart and plot areas, walls | Done (`Paint::Picture`, `PictureFill`, `chart_relationships`) |
 | Shadow, glow and soft-edge effects on series, single points, chart and plot areas, walls | Done (`Effects`, `Shadow`, `Glow`) |
 | Chartsheet (a chart on its own sheet) | Done (`chartsheet_part`, `chartsheet_drawing_part`, `workbook_sheet_element`) |

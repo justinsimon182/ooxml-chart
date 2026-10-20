@@ -420,6 +420,25 @@ fn title_runs_survive_a_round_trip() {
 }
 
 #[test]
+fn style_and_colour_parts_survive_a_round_trip() {
+    use ooxml_chart::{ChartColors, ChartStyle, ColorMethod};
+    let style = ChartStyle::new().text_color("010102").title_size(16.0);
+    let back: ChartStyle = serde_json::from_str(&serde_json::to_string(&style).unwrap()).unwrap();
+    assert_eq!(back, style);
+    let colors = ChartColors::new()
+        .method(ColorMethod::WithinLinear)
+        .colors(["8E0DD1"]);
+    let json = serde_json::to_string(&colors).unwrap();
+    assert!(json.contains("within_linear"), "{json}");
+    let back: ChartColors = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, colors);
+    assert_eq!(
+        serde_json::from_str::<ChartStyle>("{}").unwrap(),
+        ChartStyle::new()
+    );
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))

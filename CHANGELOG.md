@@ -4,6 +4,22 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Chart style and colour parts, the two optional parts Excel 2013+ stores beside
+  a chart (`xl/charts/style1.xml`, `colors1.xml`): `ChartStyle` (Excel's default
+  style 201 with text and line colours and text sizes changeable) and
+  `ChartColors` (a palette and `ColorMethod`, default Excel's theme accents),
+  with `chart_style_content_types_override`,
+  `chart_colors_content_types_override` and the content and relationship type
+  constants. The defaults are identical, as canonical XML, to what Excel writes
+  for a new chart.
+- Gallery grows to 98 parts. The four new ones are not schema-checked (no XSD
+  is vendored for the `cs:` namespace); `scripts/excel_roundtrip.py` loads them
+  in Excel attached to a chart.
+
 ## [0.7.0] - 2026-10-20
 
 ### Added

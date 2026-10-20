@@ -85,7 +85,7 @@ def rels(*entries):
     return f'{HEAD}<Relationships xmlns="{PKG}">{body}</Relationships>'
 
 
-def build(path, drawing, drawing_rels, extra):
+def build(path, drawing, drawing_rels, extra, extra_types=None):
     """One workbook: Sheet1 + the given drawing part + its relationship targets."""
     overrides = {
         "/xl/workbook.xml": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
@@ -94,6 +94,7 @@ def build(path, drawing, drawing_rels, extra):
     }
     if "xl/charts/chart1.xml" in extra:
         overrides["/xl/charts/chart1.xml"] = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+    overrides.update(extra_types or {})
     types = "".join(f'<Override PartName="{p}" ContentType="{t}"/>' for p, t in overrides.items())
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(
@@ -220,6 +221,8 @@ def main():
     column = open(os.path.join(gallery, "column_clustered.xml"), "rb").read()
     for part in sorted(glob.glob(os.path.join(gallery, "*.xml"))):
         name = os.path.basename(part)[:-4]
+        if name.startswith(("chart_style", "chart_colors")):
+            continue  # not charts: attached to one below
         data = open(part, "rb").read()
         out = os.path.join(work, name + ".xlsx")
         if name.startswith("drawing_"):
@@ -245,6 +248,29 @@ def main():
                 extra["xl/charts/_rels/chart1.xml.rels"] = rels(("rId1", "image", "../media/image1.png"))
             build(out, drawing, rels(("rId1", "chart", "../charts/chart1.xml")), extra)
             expected[name] = (1, 1)
+    # The style and colours parts ride on a column chart, as Excel stores them.
+    # The workbook must load with its chart. Excel does not keep them on save for
+    # a chart it did not author, and its object model does not say whether it read
+    # them, so that is all this can check; the defaults are also byte-for-byte
+    # what Excel writes for a new chart (see the unit tests).
+    style_files = {"chart_style_custom": "style1", "chart_colors_brand": "colors1"}
+    if all(os.path.exists(os.path.join(gallery, n + ".xml")) for n in style_files):
+        ms = "http://schemas.microsoft.com/office/2011/relationships"
+        extra = {"xl/charts/chart1.xml": column}
+        for n, member in style_files.items():
+            extra[f"xl/charts/{member}.xml"] = open(os.path.join(gallery, n + ".xml"), "rb").read()
+        extra["xl/charts/_rels/chart1.xml.rels"] = (
+            f'{HEAD}<Relationships xmlns="{PKG}">'
+            f'<Relationship Id="rId1" Type="{ms}/chartStyle" Target="style1.xml"/>'
+            f'<Relationship Id="rId2" Type="{ms}/chartColorStyle" Target="colors1.xml"/></Relationships>'
+        )
+        build(
+            os.path.join(work, "style_parts.xlsx"), WS_DRAWING % GRAPHIC_FRAME,
+            rels(("rId1", "chart", "../charts/chart1.xml")), extra,
+            {"/xl/charts/style1.xml": "application/vnd.ms-office.chartstyle+xml",
+             "/xl/charts/colors1.xml": "application/vnd.ms-office.chartcolorstyle+xml"},
+        )
+        expected["style_parts"] = (1, 1)
     script = os.path.join(work, "check.ps1")
     open(script, "w").write(POWERSHELL)
     run = subprocess.run(

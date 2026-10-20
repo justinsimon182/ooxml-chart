@@ -47,6 +47,7 @@ mod metrics;
 mod reference;
 mod render;
 mod spec;
+mod style;
 mod template;
 mod xml;
 
@@ -72,6 +73,11 @@ pub use spec::{
     MarkerSymbol, OfPie, OfPieSplit, Paint, Pattern, PatternKind, PictureFill, Plot, PointFormat,
     PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TickMark, TitleRun,
     Trendline, TrendlineKind, View3D,
+};
+pub use style::{
+    chart_colors_content_types_override, chart_style_content_types_override, ChartColors,
+    ChartStyle, ColorMethod, CHART_COLORS_CONTENT_TYPE, CHART_COLORS_RELATIONSHIP_TYPE,
+    CHART_STYLE_CONTENT_TYPE, CHART_STYLE_RELATIONSHIP_TYPE,
 };
 pub use template::TemplateChart;
 
