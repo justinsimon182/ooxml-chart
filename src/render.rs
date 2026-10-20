@@ -977,7 +977,12 @@ fn check_trendline(trendline: &Trendline) -> Result<(), ChartError> {
     Ok(())
 }
 
-fn check_range(field: &'static str, value: i64, min: i64, max: i64) -> Result<(), ChartError> {
+pub(crate) fn check_range(
+    field: &'static str,
+    value: i64,
+    min: i64,
+    max: i64,
+) -> Result<(), ChartError> {
     if (min..=max).contains(&value) {
         Ok(())
     } else {
@@ -1003,7 +1008,7 @@ fn check_line_width(points: f64) -> Result<(), ChartError> {
     check_range("line width in EMU", line_emu(points), 0, MAX_LINE_EMU)
 }
 
-fn check_color(color: &str) -> Result<(), ChartError> {
+pub(crate) fn check_color(color: &str) -> Result<(), ChartError> {
     if color.len() == 6 && color.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         Ok(())
     } else {

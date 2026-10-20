@@ -161,6 +161,33 @@ let part = ChartSpec::new(ChartKind::ColumnClustered)
 Axis titles take `Axis::title_runs` the same way. Use `title` or `title_runs`,
 not both.
 
+## Style and colour parts
+
+Excel 2013 and later keep two optional parts beside a chart: a style part and a
+colours part. The chart draws without them; they tell Excel's Chart Styles
+gallery and "Change Colors" picker where the chart sits. The defaults match
+what Excel writes for a new chart, and a brand palette is one call:
+
+```rust
+use ooxml_chart::{
+    chart_colors_content_types_override, chart_style_content_types_override, ChartColors,
+    ChartStyle, CHART_COLORS_RELATIONSHIP_TYPE, CHART_STYLE_RELATIONSHIP_TYPE,
+};
+
+let style = ChartStyle::new().text_color("404040").title_size(16.0).render()?; // xl/charts/style1.xml
+let colors = ChartColors::new().colors(["8E0DD1", "0090B2", "28EAE4"]).render()?; // xl/charts/colors1.xml
+let types = [
+    chart_style_content_types_override("/xl/charts/style1.xml"),
+    chart_colors_content_types_override("/xl/charts/colors1.xml"),
+];
+// Reach them from xl/charts/_rels/chart1.xml.rels with
+// drawing_relationships_typed, using the two relationship type constants.
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Excel does not keep these parts when it re-saves a chart it did not author, so
+treat them as input for the editing session, not as stored state.
+
 ## Combination charts
 
 ```rust

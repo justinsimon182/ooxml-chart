@@ -3770,3 +3770,179 @@ mod title_runs {
         }
     }
 }
+
+// --- chart style and colour parts -----------------------------------------------------------
+
+mod style_parts {
+    use super::*;
+    use ooxml_chart::{
+        chart_colors_content_types_override, chart_style_content_types_override, ChartColors,
+        ChartStyle, ColorMethod,
+    };
+
+    fn text(bytes: Vec<u8>) -> String {
+        let xml = String::from_utf8(bytes).expect("utf-8");
+        assert_well_formed(&xml);
+        xml
+    }
+
+    /// Names of the elements directly under the root.
+    fn children(xml: &str) -> Vec<String> {
+        let (mut depth, mut names, mut rest) = (0, Vec::new(), xml);
+        while let Some(start) = rest.find('<') {
+            rest = &rest[start + 1..];
+            let end = rest.find('>').expect("tag end");
+            let tag = &rest[..end];
+            rest = &rest[end + 1..];
+            if tag.starts_with('?') {
+                continue;
+            }
+            if tag.starts_with('/') {
+                depth -= 1;
+                continue;
+            }
+            if depth == 1 {
+                let name = tag.split([' ', '/']).next().expect("name");
+                names.push(name.trim_start_matches("cs:").to_string());
+            }
+            if !tag.ends_with('/') {
+                depth += 1;
+            }
+        }
+        names
+    }
+
+    #[test]
+    fn the_default_style_has_every_element_in_excels_order() {
+        let xml = text(ChartStyle::new().render().expect("a style"));
+        assert!(xml.starts_with(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cs:chartStyle xmlns:cs="http://schemas.microsoft.com/office/drawing/2012/chartStyle" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" id="201">"#), "{xml}");
+        let want = "axisTitle categoryAxis chartArea dataLabel dataLabelCallout dataPoint dataPoint3D \
+                    dataPointLine dataPointMarker dataPointMarkerLayout dataPointWireframe dataTable \
+                    downBar dropLine errorBar floor gridlineMajor gridlineMinor hiLoLine leaderLine \
+                    legend plotArea plotArea3D seriesAxis seriesLine title trendline trendlineLabel \
+                    upBar valueAxis wall";
+        assert_eq!(children(&xml).join(" "), want);
+    }
+
+    #[test]
+    fn colours_and_sizes_land_where_text_and_lines_are() {
+        let xml = text(
+            ChartStyle::new()
+                .id(202)
+                .text_color("010102")
+                .line_color("8e0dd1")
+                .title_size(18.0)
+                .text_size(10.5)
+                .render()
+                .expect("a style"),
+        );
+        assert!(xml.contains(r#" id="202">"#), "{xml}");
+        assert!(xml.contains(r#"<cs:defRPr sz="1800" b="0""#), "{xml}");
+        assert!(
+            xml.contains(r#"<cs:legend><cs:lnRef idx="0"/><cs:fillRef idx="0"/><cs:effectRef idx="0"/><cs:fontRef idx="minor"><a:srgbClr val="010102"/></cs:fontRef><cs:defRPr sz="1050" kern="1200"/></cs:legend>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<cs:gridlineMajor><cs:lnRef idx="0"/><cs:fillRef idx="0"/><cs:effectRef idx="0"/><cs:fontRef idx="minor"><a:schemeClr val="tx1"/></cs:fontRef><cs:spPr><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:srgbClr val="8E0DD1"/>"#),
+            "{xml}"
+        );
+        // What is neither text nor a rule keeps Excel's value.
+        assert!(xml.contains(r#"<a:prstDash val="sysDot"/>"#), "{xml}");
+        assert_eq!(children(&xml).len(), 31);
+    }
+
+    #[test]
+    fn a_bad_style_setting_is_refused() {
+        let bad = [
+            ChartStyle::new().text_color("nope"),
+            ChartStyle::new().line_color("12345"),
+            ChartStyle::new().title_size(f64::NAN),
+            ChartStyle::new().title_size(0.5),
+            ChartStyle::new().text_size(4001.0),
+        ];
+        for style in bad {
+            assert!(style.render().is_err(), "{style:?}");
+        }
+    }
+
+    #[test]
+    fn the_default_palette_is_the_six_theme_accents_then_nine_variations() {
+        let xml = text(ChartColors::new().render().expect("colours"));
+        assert!(xml.contains(r#"<cs:colorStyle xmlns:cs="http://schemas.microsoft.com/office/drawing/2012/chartStyle" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" meth="cycle" id="10">"#), "{xml}");
+        for accent in 1..=6 {
+            assert!(
+                xml.contains(&format!(r#"<a:schemeClr val="accent{accent}"/>"#)),
+                "{xml}"
+            );
+        }
+        assert_eq!(xml.matches("<cs:variation").count(), 9, "{xml}");
+        assert!(xml.ends_with("</cs:variation></cs:colorStyle>"), "{xml}");
+    }
+
+    #[test]
+    fn a_custom_palette_replaces_the_accents_and_keeps_the_variations() {
+        let xml = text(
+            ChartColors::new()
+                .id(11)
+                .method(ColorMethod::AcrossLinearReversed)
+                .colors(["8e0dd1", "0090B2"])
+                .render()
+                .expect("colours"),
+        );
+        assert!(
+            xml.contains(r#" meth="acrossLinearReversed" id="11">"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"><a:srgbClr val="8E0DD1"/><a:srgbClr val="0090B2"/><cs:variation/>"#),
+            "{xml}"
+        );
+        assert!(!xml.contains("accent1"), "{xml}");
+        assert_eq!(xml.matches("<cs:variation").count(), 9, "{xml}");
+    }
+
+    #[test]
+    fn every_method_has_its_own_code() {
+        let codes = [
+            (ColorMethod::Cycle, "cycle"),
+            (ColorMethod::WithinLinear, "withinLinear"),
+            (ColorMethod::AcrossLinear, "acrossLinear"),
+            (ColorMethod::WithinLinearReversed, "withinLinearReversed"),
+            (ColorMethod::AcrossLinearReversed, "acrossLinearReversed"),
+        ];
+        for (method, code) in codes {
+            let xml = text(ChartColors::new().method(method).render().expect("colours"));
+            assert!(xml.contains(&format!(r#" meth="{code}" "#)), "{xml}");
+        }
+    }
+
+    #[test]
+    fn a_bad_palette_colour_is_refused() {
+        for color in ["", "FFF", "GGGGGG", "#8E0DD1"] {
+            assert!(
+                ChartColors::new().colors([color]).render().is_err(),
+                "{color:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn content_types_and_relationship_types_are_the_ones_excel_writes() {
+        assert_eq!(
+            chart_style_content_types_override("/xl/charts/style1.xml"),
+            r#"<Override PartName="/xl/charts/style1.xml" ContentType="application/vnd.ms-office.chartstyle+xml"/>"#
+        );
+        assert_eq!(
+            chart_colors_content_types_override("/xl/charts/colors1.xml"),
+            r#"<Override PartName="/xl/charts/colors1.xml" ContentType="application/vnd.ms-office.chartcolorstyle+xml"/>"#
+        );
+        assert_eq!(
+            ooxml_chart::CHART_STYLE_RELATIONSHIP_TYPE,
+            "http://schemas.microsoft.com/office/2011/relationships/chartStyle"
+        );
+        assert_eq!(
+            ooxml_chart::CHART_COLORS_RELATIONSHIP_TYPE,
+            "http://schemas.microsoft.com/office/2011/relationships/chartColorStyle"
+        );
+    }
+}

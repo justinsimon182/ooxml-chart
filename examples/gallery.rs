@@ -217,6 +217,32 @@ fn run() {
         fs::write(dir.join(format!("{file}.xml")), part).expect("write drawing");
     }
 
+    // Style and colour parts, which sit beside a chart rather than being one.
+    let style_parts = [
+        ("chart_style", ooxml_chart::ChartStyle::new().render()),
+        (
+            "chart_style_custom",
+            ooxml_chart::ChartStyle::new()
+                .text_color("010102")
+                .line_color("8E0DD1")
+                .title_size(18.0)
+                .text_size(10.5)
+                .render(),
+        ),
+        ("chart_colors", ooxml_chart::ChartColors::new().render()),
+        (
+            "chart_colors_brand",
+            ooxml_chart::ChartColors::new()
+                .id(11)
+                .colors(["8E0DD1", "0090B2", "28EAE4", "104991", "68248C"])
+                .render(),
+        ),
+    ];
+    for (file, part) in style_parts {
+        fs::write(dir.join(format!("{file}.xml")), part.expect("a style part"))
+            .expect("write style part");
+    }
+
     // Features that need more than a kind.
     // A surface takes its colours from value bands, not from its series.
     let plain = |name: &str, column: &str| {
