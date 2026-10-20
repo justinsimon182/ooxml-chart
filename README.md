@@ -343,6 +343,28 @@ A single bar, slice or bubble takes them through `PointFormat::effects`.
 Stock charts and a markers-only scatter chart draw no line for an effect to
 hang on, so they refuse series effects.
 
+## Picture fills
+
+An image can fill a series, a point, the chart area, the plot area or a 3-D
+wall, stretched or tiled. The image is a package part of your own; the chart
+part reaches it through a relationship, which `chart_relationships` writes:
+
+```rust
+use ooxml_chart::{
+    chart_relationships, AreaStyle, ChartKind, ChartSpec, Paint, PictureFill, Series, SeriesName,
+};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .series(Series::new(SeriesName::Literal("Sales".into()), "'Sheet1'!$B$2:$B$5"))
+    .chart_area(AreaStyle::new().fill_paint(Paint::Picture(PictureFill::new("rId1").tiled())))
+    .render()?;
+// Store at xl/charts/_rels/chart1.xml.rels, beside xl/charts/chart1.xml:
+let rels = chart_relationships(&[("rId1".into(), "../media/image1.png".into())]);
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Lines cannot be drawn with a picture, so borders and axis lines refuse one.
+
 ## A chart on its own sheet
 
 A chartsheet holds one chart and no cells. The chart part is the one above; the

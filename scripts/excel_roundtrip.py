@@ -25,6 +25,9 @@ from the chart group onto each series. Anything else is worth a look.
     cargo run --example gallery -- out
     python scripts/excel_roundtrip.py out [--strict] [--verbose]
 
+A chart whose fills point at an image (`r:embed`) gets a generated one-pixel
+PNG as `rId1` on its chart part.
+
 Only generated sample data is used; nothing leaves the machine.
 """
 import base64
@@ -235,7 +238,12 @@ def main():
             build(out, drawing, drawing_rels, extra)
         else:
             drawing = WS_DRAWING % GRAPHIC_FRAME
-            build(out, drawing, rels(("rId1", "chart", "../charts/chart1.xml")), {"xl/charts/chart1.xml": data})
+            extra = {"xl/charts/chart1.xml": data}
+            if b"r:embed" in data:
+                # A picture fill: the chart part reaches the image as rId1.
+                extra["xl/media/image1.png"] = PNG
+                extra["xl/charts/_rels/chart1.xml.rels"] = rels(("rId1", "image", "../media/image1.png"))
+            build(out, drawing, rels(("rId1", "chart", "../charts/chart1.xml")), extra)
             expected[name] = (1, 1)
     script = os.path.join(work, "check.ps1")
     open(script, "w").write(POWERSHELL)

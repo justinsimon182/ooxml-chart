@@ -390,6 +390,20 @@ fn effects_survive_a_round_trip() {
 }
 
 #[test]
+fn picture_fills_survive_a_round_trip() {
+    use ooxml_chart::{AreaStyle, Paint, PictureFill};
+    let spec = ChartSpec::new(ChartKind::ColumnClustered)
+        .series(
+            Series::new(SeriesName::Literal("A".into()), "S!$C$2:$C$5")
+                .with_fill(Paint::Picture(PictureFill::new("rId1"))),
+        )
+        .chart_area(AreaStyle::new().fill_paint(Paint::Picture(PictureFill::new("rId2").tiled())));
+    let json = serde_json::to_string(&spec).expect("serialises");
+    let back: ChartSpec = serde_json::from_str(&json).expect("parses");
+    assert_eq!(back, spec);
+}
+
+#[test]
 fn date_tick_units_survive_a_round_trip() {
     let spec = ChartSpec::new(ChartKind::Line)
         .series(Series::new(SeriesName::Literal("A".into()), "S!$B$2:$B$5"))
