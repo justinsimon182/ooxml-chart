@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Not from ECMA-376. A stub declaring only the cx:chart frame reference
+     ([MS-ODRAWXML] 2.24.3.6) so a drawing hosting a chartEx part validates.
+     The chartEx part itself has no vendored schema. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+  targetNamespace="http://schemas.microsoft.com/office/drawing/2014/chartex"
+  elementFormDefault="qualified">
+  <xsd:import namespace="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    schemaLocation="shared-relationshipReference.xsd"/>
+  <xsd:element name="chart">
+    <xsd:complexType>
+      <xsd:attribute ref="r:id" use="required"/>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

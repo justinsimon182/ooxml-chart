@@ -8,7 +8,8 @@ the `schema` CI job check every part the gallery example writes against them.
 | --- | --- |
 | `dml-chart.xsd`, `dml-spreadsheetDrawing.xsd` | the two part types the crate writes |
 | `dml-chartDrawing.xsd`, `dml-main.xsd`, `dml-diagram.xsd`, `dml-lockedCanvas.xsd`, `dml-picture.xsd` | imported by the chart schema |
+| `chartex-frame.xsd`, `drawing-with-chartex.xsd` | written for this crate, not ECMA-376: declare the `cx:chart` frame reference so a drawing hosting a `chartEx` part validates. The `chartEx` part itself is not schema-checked; `excel_roundtrip.py` loads it in Excel |
 | `shared-commonSimpleTypes.xsd`, `shared-relationshipReference.xsd` | imported by the schemas above |
 
-The files are unmodified copies of the publicly available ISO/IEC 29500-4:2016
+The ECMA files are unmodified copies of the publicly available ISO/IEC 29500-4:2016
 schemas. They are for testing only and are excluded from the published crate.

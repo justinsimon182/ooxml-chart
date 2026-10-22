@@ -82,6 +82,9 @@ pub struct GraphicFrame {
     /// opens cleanly and nothing looks wrong until someone changes a row
     /// height.
     pub edit_as: Option<String>,
+    /// The frame hosts a `chartEx` part ([`crate::ChartEx`]) rather than a
+    /// `c:` chart. Set it with [`GraphicFrame::for_chart_ex`].
+    pub chart_ex: bool,
 }
 
 impl GraphicFrame {
@@ -92,7 +95,15 @@ impl GraphicFrame {
             name: name.into(),
             relationship_id: relationship_id.into(),
             edit_as: None,
+            chart_ex: false,
         }
+    }
+
+    /// Marks the frame as hosting a [`crate::ChartEx`] part.
+    #[must_use]
+    pub fn for_chart_ex(mut self) -> Self {
+        self.chart_ex = true;
+        self
     }
 
     /// Sets the anchor's `editAs`; see [`GraphicFrame::edit_as`].
@@ -110,8 +121,8 @@ fn frame_xml(frame: &GraphicFrame) -> String {
             r#"<xdr:graphicFrame macro="">"#,
             r#"<xdr:nvGraphicFramePr><xdr:cNvPr id="{id}" name="{name}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"#,
             r#"<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>"#,
-            r#"<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">"#,
-            r#"<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart""#,
+            r#"<a:graphic><a:graphicData uri="{ns}">"#,
+            r#"<{p}:chart xmlns:{p}="{ns}""#,
             r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
             r#" r:id="{rid}"/>"#,
             r#"</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/>"#,
@@ -119,6 +130,12 @@ fn frame_xml(frame: &GraphicFrame) -> String {
         id = frame.id,
         name = escape(&frame.name),
         rid = escape(&frame.relationship_id),
+        p = if frame.chart_ex { "cx" } else { "c" },
+        ns = if frame.chart_ex {
+            "http://schemas.microsoft.com/office/drawing/2014/chartex"
+        } else {
+            "http://schemas.openxmlformats.org/drawingml/2006/chart"
+        },
     )
 }
 
@@ -519,6 +536,7 @@ mod tests {
             name: "Chart 1".to_string(),
             relationship_id: "rId1".to_string(),
             edit_as: None,
+            chart_ex: false,
         }
     }
 

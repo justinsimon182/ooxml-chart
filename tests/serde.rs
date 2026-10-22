@@ -499,3 +499,20 @@ fn a_parsed_spec_is_still_validated_when_rendered() {
         Err(ooxml_chart::ChartError::InvalidColor(_))
     ));
 }
+
+#[test]
+fn a_chart_ex_survives_a_round_trip_and_refuses_unknown_fields() {
+    use ooxml_chart::{Bins, ChartEx, ChartExKind};
+    let chart = ChartEx::new(ChartExKind::Histogram, "'S'!$C$2:$C$9").bins(Bins::Count(4));
+    let json = serde_json::to_string(&chart).unwrap();
+    assert!(json.contains(r#""bins":{"count":4}"#), "{json}");
+    assert_eq!(serde_json::from_str::<ChartEx>(&json).unwrap(), chart);
+    let minimal = r#"{"kind":"waterfall","values":"'S'!$C$2:$C$9","categories":"'S'!$A$2:$A$9"}"#;
+    assert!(serde_json::from_str::<ChartEx>(minimal)
+        .unwrap()
+        .render()
+        .is_ok());
+    assert!(
+        serde_json::from_str::<ChartEx>(r#"{"kind":"funnel","values":"A","colour":1}"#).is_err()
+    );
+}

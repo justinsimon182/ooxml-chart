@@ -40,6 +40,7 @@
 #![deny(missing_docs)]
 #![warn(missing_debug_implementations, unreachable_pub)]
 
+mod chartex;
 mod chartsheet;
 mod drawing;
 mod error;
@@ -51,6 +52,10 @@ mod style;
 mod template;
 mod xml;
 
+pub use chartex::{
+    chart_ex_content_types_override, Bins, ChartEx, ChartExKind, CHART_EX_CONTENT_TYPE,
+    CHART_EX_RELATIONSHIP_TYPE,
+};
 pub use chartsheet::{
     chartsheet_content_types_override, chartsheet_drawing_part, chartsheet_part,
     workbook_chartsheet_relationship, workbook_sheet_element, CHARTSHEET_CONTENT_TYPE,

@@ -243,6 +243,52 @@ fn run() {
             .expect("write style part");
     }
 
+    // Office 2016 kinds, stored as chartEx parts.
+    use ooxml_chart::{Bins, ChartEx, ChartExKind as K};
+    let (cats, vals) = ("'Sheet1'!$A$2:$A$6", "'Sheet1'!$C$2:$C$6");
+    let chart_ex = [
+        (
+            "cx_waterfall",
+            ChartEx::new(K::Waterfall, vals).categories(cats),
+        ),
+        (
+            "cx_waterfall_full",
+            ChartEx::new(K::Waterfall, vals)
+                .categories(cats)
+                .name(SeriesName::Reference("'Sheet1'!$C$1".into()))
+                .title("Cash & flow")
+                .legend(false)
+                .subtotals([4]),
+        ),
+        ("cx_funnel", ChartEx::new(K::Funnel, vals).categories(cats)),
+        ("cx_histogram", ChartEx::new(K::Histogram, vals)),
+        (
+            "cx_histogram_bins",
+            ChartEx::new(K::Histogram, vals).bins(Bins::Width(2.5)),
+        ),
+        ("cx_pareto", ChartEx::new(K::Pareto, vals).categories(cats)),
+        ("cx_box_whisker", ChartEx::new(K::BoxWhisker, vals)),
+        (
+            "cx_treemap",
+            ChartEx::new(K::Treemap, vals).categories("'Sheet1'!$A$2:$B$6"),
+        ),
+        (
+            "cx_sunburst",
+            ChartEx::new(K::Sunburst, vals)
+                .categories("'Sheet1'!$A$2:$B$6")
+                .name(SeriesName::Literal("Value".into())),
+        ),
+    ];
+    for (file, chart) in chart_ex {
+        let part = chart.render().expect("a chartEx part");
+        fs::write(dir.join(format!("{file}.xml")), part).expect("write chartEx");
+    }
+    let part = ooxml_chart::drawing_part_with(&[(
+        ooxml_chart::Anchor::two_cell(two),
+        frame().for_chart_ex(),
+    )]);
+    fs::write(dir.join("drawing_chart_ex.xml"), part).expect("write drawing");
+
     // Features that need more than a kind.
     // A surface takes its colours from value bands, not from its series.
     let plain = |name: &str, column: &str| {
