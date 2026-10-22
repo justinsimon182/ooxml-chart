@@ -36,6 +36,7 @@ import glob
 import os
 import subprocess
 import sys
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
@@ -178,6 +179,23 @@ def signatures(data):
     return counts
 
 
+# What Excel rewrites on save without losing anything, each with the reason.
+# A line matching one of these is reported apart from real losses.
+KNOWN_REWRITES = [
+    (re.compile(r"/gapDepth val=\"150\"|/perspective val=\"30\"|/layoutTarget val=\"outer\""),
+     "a spec default, which Excel leaves out"),
+    (re.compile(r"/axPos "), "Excel works out the axis side again"),
+    (re.compile(r"/xVal/numRef"), "the test sheet's column A is text, so Excel reads the x values as text"),
+    (re.compile(r"/dlblRangeCache/"),
+     "the cached label text differs from the test sheet; Excel reads the sheet"),
+    (re.compile(r"^/chartSpace/date1904 "), "Excel takes the date system from the workbook"),
+    (re.compile(r"formatCode=\"mmm yy\".*mmm\\ yy"),"the same format, with the space escaped"),
+    (re.compile(r"/AlternateContent/Fallback/"), "Excel fills in its own notice shape"),
+    (re.compile(r"^/chartSpace/txPr/bodyPr  ->  bIns=\"0\""), "Excel writes the zero text insets out"),
+    (re.compile(r"/line3DChart/ser/marker"), "a 3-D line draws no markers"),
+]
+
+
 def saved_part(path, member):
     try:
         with zipfile.ZipFile(path) as z:
@@ -199,6 +217,13 @@ def dropped(original, saved):
         gained_at[path].append((attributes, text))
     lines = []
     for (path, attributes, text), n in sorted(lost.items()):
+        # Excel copies chart-wide label settings onto each series (or each
+        # label) and drops them from the chart level: moved, not lost.
+        if "Chart/dLbls/" in path and any(
+            (path.replace("Chart/dLbls/", "Chart/ser/" + where, 1), attributes, text) in saved_counts
+            for where in ("dLbls/", "dLbls/dLbl/")
+        ):
+            continue
         shown = " ".join(f'{k}="{v}"' for k, v in attributes)
         item = f"{path} {shown}".strip() + (f" text={text!r}" if text else "")
         if path in gained_at:
@@ -337,12 +362,24 @@ def main():
         if name.startswith("cx_"):
             # Excel moves each chartEx reference into a hidden workbook name.
             lines = [line for line in lines if "/f text=" not in line]
+        known = [
+            (line, reason)
+            for line in lines
+            for pattern, reason in KNOWN_REWRITES
+            if pattern.search(line)
+        ]
+        explained = {line for line, _ in known}
+        lines = [line for line in lines if line not in explained]
+        if known and "--verbose" in flags:
+            for line, reason in dict(known).items():
+                print(f"KNOWN {name}: {line}  [{reason}]")
         if lines:
             changed += 1
             print(f"DIFF {name}: {len(lines)} element(s) dropped or changed by Excel")
             for line in lines if "--verbose" in flags else lines[:3]:
                 print("    " + line)
-    print(f"{len(seen) - changed} of {len(seen)} parts saved back by Excel without losing anything")
+    print(f"{len(seen) - changed} of {len(seen)} parts saved back by Excel without losing anything"
+          " (known rewrites listed with --verbose)")
 
     if "--keep" in flags:
         print(f"workbooks kept in {work}")

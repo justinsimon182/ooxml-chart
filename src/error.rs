@@ -247,7 +247,7 @@ pub enum ChartError {
 
     /// A data label position the chart kind does not allow.
     ///
-    /// Excel does not ignore an illegal `<c:dLblPos>` â€” it reports the file as
+    /// Excel does not ignore an illegal `<c:dLblPos>` — it reports the file as
     /// damaged and drops the chart. Outside-end labels on a stacked column are
     /// the classic case.
     #[error("a {position} data label is not allowed on this kind of chart")]

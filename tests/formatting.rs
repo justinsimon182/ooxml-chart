@@ -1052,9 +1052,13 @@ mod manual_layout {
     }
 
     #[test]
-    fn an_outer_plot_area_layout_says_so() {
+    fn an_outer_plot_area_layout_is_left_to_the_default() {
         let xml = render(base().plot_area_layout(Layout::new(0.0, 0.0, 1.0, 1.0).outer()));
-        assert!(xml.contains(r#"<c:layoutTarget val="outer"/>"#), "{xml}");
+        // `outer` is the default, which Excel leaves out.
+        assert!(
+            xml.contains(r#"<c:layout><c:manualLayout><c:xMode val="edge"/>"#),
+            "{xml}"
+        );
     }
 
     #[test]
@@ -2903,7 +2907,7 @@ mod three_d {
             "{xml}"
         );
         assert!(
-            xml.contains(r#"<c:gapWidth val="150"/><c:gapDepth val="150"/><c:axId val="111"/><c:axId val="222"/><c:axId val="0"/></c:bar3DChart>"#),
+            xml.contains(r#"<c:gapWidth val="150"/><c:axId val="111"/><c:axId val="222"/><c:axId val="0"/></c:bar3DChart>"#),
             "{xml}"
         );
         assert!(!xml.contains("serAx"), "{xml}");
@@ -2913,7 +2917,9 @@ mod three_d {
     fn a_3d_pie_defaults_to_a_tilt_and_perspective_and_has_no_axes() {
         let xml = render(spec(ChartKind::Pie));
         assert!(
-            xml.contains(r#"<c:view3D><c:rotX val="30"/><c:rotY val="0"/><c:rAngAx val="0"/><c:perspective val="30"/></c:view3D>"#),
+            xml.contains(
+                r#"<c:view3D><c:rotX val="30"/><c:rotY val="0"/><c:rAngAx val="0"/></c:view3D>"#
+            ),
             "{xml}"
         );
         assert!(
@@ -2993,7 +2999,7 @@ mod three_d {
                 .view_3d(View3D::new().bar_shape(BarShape::PyramidToMax)),
         );
         assert!(
-            xml.contains(r#"<c:gapDepth val="150"/><c:shape val="pyramidToMax"/><c:axId"#),
+            xml.contains(r#"<c:gapWidth val="150"/><c:shape val="pyramidToMax"/><c:axId"#),
             "{xml}"
         );
         assert!(xml.contains(r#"<c:barDir val="bar"/>"#), "{xml}");
@@ -3138,7 +3144,7 @@ mod surface {
     fn a_surface_has_the_default_view_three_axes_and_no_bands() {
         let xml = render(two(ChartKind::Surface));
         assert!(
-            xml.contains(r#"<c:view3D><c:rotX val="15"/><c:rotY val="20"/><c:rAngAx val="0"/><c:perspective val="30"/></c:view3D><c:plotArea>"#),
+            xml.contains(r#"<c:view3D><c:rotX val="15"/><c:rotY val="20"/><c:rAngAx val="0"/></c:view3D><c:plotArea>"#),
             "{xml}"
         );
         assert!(
@@ -3315,7 +3321,7 @@ mod decorations {
     }
 
     #[test]
-    fn a_line_takes_drop_lines_high_low_lines_and_up_down_bars_before_the_marker() {
+    fn a_line_takes_drop_lines_high_low_lines_and_up_down_bars_before_the_axes() {
         let xml = render(
             two(ChartKind::Line)
                 .drop_lines(true)
@@ -3323,7 +3329,7 @@ mod decorations {
                 .up_down_bars("0090B2", "8E0DD1"),
         );
         assert!(
-            xml.contains(r#"</c:ser><c:dropLines/><c:hiLowLines/><c:upDownBars><c:gapWidth val="150"/><c:upBars><c:spPr><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></c:spPr></c:upBars><c:downBars><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></c:spPr></c:downBars></c:upDownBars><c:marker val="0"/>"#),
+            xml.contains(r#"</c:ser><c:dropLines/><c:hiLowLines/><c:upDownBars><c:gapWidth val="150"/><c:upBars><c:spPr><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></c:spPr></c:upBars><c:downBars><c:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></c:spPr></c:downBars></c:upDownBars><c:axId"#),
             "{xml}"
         );
     }
