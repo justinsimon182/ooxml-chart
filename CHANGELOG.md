@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `GraphicFrame::for_chart_ex` takes the chart's kind and wraps the frame in
+  `mc:AlternateContent`, as Excel saves it: Excel 2013 and other readers
+  without chartEx show a notice shape instead of failing.
+- `scripts/excel_roundtrip.py --keep` keeps the workbooks Excel saved.
+
 - `ChartExKind::RegionMap`: regions shaded by value. Excel looks the region
   names up on Bing when it opens the file; the crate writes no geography,
   since one without Bing's cache stops that lookup. Gallery grows to 115

@@ -340,7 +340,7 @@ fn run() {
     }
     let part = ooxml_chart::drawing_part_with(&[(
         ooxml_chart::Anchor::two_cell(two),
-        frame().for_chart_ex(),
+        frame().for_chart_ex(K::Waterfall),
     )]);
     fs::write(dir.join("drawing_chart_ex.xml"), part).expect("write drawing");
 

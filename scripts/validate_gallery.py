@@ -17,6 +17,7 @@ from lxml import etree
 
 CHART = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 DRAWING = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
 
 def flatten_extensions(doc):
@@ -31,6 +32,21 @@ def flatten_extensions(doc):
             ext.remove(extra)
 
 
+def resolve_alternate_content(doc):
+    """Replace each `mc:AlternateContent` with its first choice's content.
+
+    This is what a reader that knows the choice sees; the schemas do not
+    cover the wrapper itself.
+    """
+    for alt in list(doc.iter("{%s}AlternateContent" % MC)):
+        choice = alt.find("{%s}Choice" % MC)
+        parent = alt.getparent()
+        at = parent.index(alt)
+        parent.remove(alt)
+        for offset, child in enumerate(list(choice) if choice is not None else []):
+            parent.insert(at + offset, child)
+
+
 def main(parts_dir, schema_dir):
     schemas = {
         "{%s}chartSpace" % CHART: "dml-chart.xsd",
@@ -41,6 +57,7 @@ def main(parts_dir, schema_dir):
     for path in sorted(glob.glob(os.path.join(parts_dir, "*.xml"))):
         doc = etree.parse(path)
         flatten_extensions(doc)
+        resolve_alternate_content(doc)
         xsd = schemas.get(doc.getroot().tag)
         if xsd is None:
             print("SKIP   ", os.path.basename(path), doc.getroot().tag)

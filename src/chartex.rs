@@ -4,7 +4,8 @@
 //! These are not `c:` charts. Excel stores them in a separate part type, a
 //! `cx:chartSpace` at `xl/charts/chartExN.xml`, reached from the drawing by a
 //! relationship of type [`CHART_EX_RELATIONSHIP_TYPE`]. The drawing's frame
-//! must say so too: build it with [`GraphicFrame::for_chart_ex`](crate::GraphicFrame::for_chart_ex).
+//! must say so too: build it with [`GraphicFrame::for_chart_ex`](crate::GraphicFrame::for_chart_ex),
+//! which also gives readers without chartEx a notice shape.
 //!
 //! Excel itself writes each range as a hidden workbook name
 //! (`_xlchart.v1.0`). It reads a plain reference just as well, and recreates
