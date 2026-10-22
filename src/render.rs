@@ -18,7 +18,7 @@ use crate::spec::{
     PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TitleRun, Trendline,
     TrendlineKind, View3D,
 };
-use crate::xml::escape;
+use crate::xml::{escape, escape_into};
 
 /// The primary axis pair. Arbitrary but stable: what matters is that each axis
 /// names the other as its `crossAx`.
@@ -2348,29 +2348,34 @@ fn trendline_xml(trendline: &Trendline) -> String {
 }
 
 fn str_cache(labels: &[String]) -> String {
-    let points: String = labels
-        .iter()
-        .enumerate()
-        .map(|(index, label)| format!(r#"<c:pt idx="{index}"><c:v>{}</c:v></c:pt>"#, escape(label)))
-        .collect();
-    format!(
-        r#"<c:strCache><c:ptCount val="{}"/>{points}</c:strCache>"#,
-        labels.len()
-    )
+    use std::fmt::Write;
+    let mut out = String::with_capacity(48 + labels.len() * 40);
+    let _ = write!(out, r#"<c:strCache><c:ptCount val="{}"/>"#, labels.len());
+    for (index, label) in labels.iter().enumerate() {
+        let _ = write!(out, r#"<c:pt idx="{index}"><c:v>"#);
+        escape_into(&mut out, label);
+        out.push_str("</c:v></c:pt>");
+    }
+    out.push_str("</c:strCache>");
+    out
 }
 
 /// Non-finite values are left out, which Excel reads as a blank cell.
 fn num_cache(values: &[f64]) -> String {
-    let points: String = values
-        .iter()
-        .enumerate()
-        .filter(|(_, value)| value.is_finite())
-        .map(|(index, value)| format!(r#"<c:pt idx="{index}"><c:v>{value}</c:v></c:pt>"#))
-        .collect();
-    format!(
-        r#"<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="{}"/>{points}</c:numCache>"#,
+    use std::fmt::Write;
+    let mut out = String::with_capacity(80 + values.len() * 40);
+    let _ = write!(
+        out,
+        r#"<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="{}"/>"#,
         values.len()
-    )
+    );
+    for (index, value) in values.iter().enumerate() {
+        if value.is_finite() {
+            let _ = write!(out, r#"<c:pt idx="{index}"><c:v>{value}</c:v></c:pt>"#);
+        }
+    }
+    out.push_str("</c:numCache>");
+    out
 }
 
 // --- text and area formatting -------------------------------------------------

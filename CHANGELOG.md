@@ -45,6 +45,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - XML escaping runs in one pass with one allocation. A 50-series line chart
   renders in 44 µs, down from 100 µs. The output is byte-identical.
+- Cached values and labels are written into one buffer instead of one
+  string per point: a 50-series, 36-point cached line chart renders in
+  172 µs, down from 284 µs. The output is byte-identical.
 
 ## [0.7.0] - 2026-10-20
 
