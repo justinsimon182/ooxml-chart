@@ -194,3 +194,67 @@ fn options_for_other_kinds_are_refused() {
         Err(ChartError::InvalidReference { .. })
     ));
 }
+
+#[test]
+fn histogram_overflow_underflow_and_closed_left_bins_are_written() {
+    let xml = render(
+        ChartEx::new(ChartExKind::Histogram, VALUES)
+            .bins(Bins::Count(4))
+            .underflow(2.0)
+            .overflow(9.5)
+            .bins_closed_left(),
+    );
+    assert!(xml.contains(r#"<cx:binning intervalClosed="l" underflow="2" overflow="9.5"><cx:binCount val="4"/></cx:binning>"#), "{xml}");
+    let pareto = render(
+        ChartEx::new(ChartExKind::Pareto, VALUES)
+            .categories(CATS)
+            .overflow(5.0),
+    );
+    assert!(
+        pareto.contains(r#"<cx:binning intervalClosed="r" overflow="5"></cx:binning>"#),
+        "{pareto}"
+    );
+}
+
+#[test]
+fn connector_lines_and_axis_titles_are_written() {
+    let xml = render(
+        ChartEx::new(ChartExKind::Waterfall, VALUES)
+            .categories(CATS)
+            .connector_lines(false)
+            .category_axis_title("Month")
+            .value_axis_title("Cash <USD>"),
+    );
+    assert!(xml.contains(r#"<cx:layoutPr><cx:visibility connectorLines="0"/><cx:subtotals>"#));
+    assert!(xml.contains(
+        r#"<cx:catScaling gapWidth="0.5"/><cx:title><cx:tx><cx:txData><cx:v>Month</cx:v>"#
+    ));
+    assert!(xml.contains(r#"<cx:valScaling/><cx:title><cx:tx><cx:txData><cx:v>Cash &lt;USD&gt;</cx:v></cx:txData></cx:tx></cx:title><cx:majorGridlines/>"#));
+}
+
+#[test]
+fn binning_connector_and_axis_options_on_other_kinds_are_refused() {
+    for chart in [
+        ChartEx::new(ChartExKind::Funnel, VALUES)
+            .categories(CATS)
+            .overflow(1.0),
+        ChartEx::new(ChartExKind::Histogram, VALUES)
+            .underflow(5.0)
+            .overflow(5.0),
+        ChartEx::new(ChartExKind::Histogram, VALUES).overflow(f64::INFINITY),
+        ChartEx::new(ChartExKind::Pareto, VALUES)
+            .categories(CATS)
+            .connector_lines(true),
+        ChartEx::new(ChartExKind::Treemap, VALUES)
+            .categories(CATS)
+            .category_axis_title("x"),
+        ChartEx::new(ChartExKind::Funnel, VALUES)
+            .categories(CATS)
+            .value_axis_title("y"),
+    ] {
+        assert!(
+            matches!(chart.render(), Err(ChartError::Unsupported { .. })),
+            "{chart:?}"
+        );
+    }
+}

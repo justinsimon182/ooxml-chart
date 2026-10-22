@@ -34,6 +34,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with Excel's field buttons shown. A pivot series without cached values (and
   categories, when it has them) is refused: Excel loads it as no series.
   Gallery grows to 111 parts.
+- `ChartEx` histograms and Pareto charts take overflow and underflow bins
+  and left-closed intervals; waterfalls take `connector_lines`; kinds with
+  axes take category and value axis titles. Gallery grows to 113 parts.
 
 ### Changed
 
