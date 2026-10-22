@@ -225,6 +225,10 @@ A box and whisker chart takes more series with `add_series(ChartExSeries::new(..
 and its look with `BoxWhiskerStyle` (mean line and markers, inner points,
 outliers, quartile method). A treemap places parent labels with
 `ParentLabels`; every kind shows or hides value labels with `data_labels`.
+Histograms and Pareto charts take `underflow`, `overflow` and
+`bins_closed_left`; waterfalls hide their joining lines with
+`connector_lines(false)`; kinds with axes take `category_axis_title` and
+`value_axis_title`.
 The other kinds draw one series.
 
 ## Pivot charts

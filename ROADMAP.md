@@ -94,7 +94,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type — 111 in all) validates against the
+date axis, and one drawing per anchor type — 113 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh

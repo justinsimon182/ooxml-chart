@@ -278,6 +278,26 @@ pub struct ChartEx {
     /// on waterfall, funnel, treemap and sunburst).
     #[cfg_attr(feature = "serde", serde(default))]
     pub data_labels: Option<bool>,
+    /// Histogram and Pareto only: values below this share one underflow bin.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub underflow: Option<f64>,
+    /// Histogram and Pareto only: values above this share one overflow bin.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub overflow: Option<f64>,
+    /// Histogram and Pareto only: bins include their lower bound rather than
+    /// their upper one (Excel's default is upper).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bins_closed_left: bool,
+    /// Waterfall only: show the lines joining the bars, or `None` for
+    /// Excel's default (shown).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub connector_lines: Option<bool>,
+    /// The category axis title, on kinds with axes.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub category_axis_title: Option<String>,
+    /// The value axis title, on kinds with a value axis.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub value_axis_title: Option<String>,
 }
 
 impl ChartEx {
@@ -296,6 +316,12 @@ impl ChartEx {
             box_whisker: None,
             parent_labels: None,
             data_labels: None,
+            underflow: None,
+            overflow: None,
+            bins_closed_left: false,
+            connector_lines: None,
+            category_axis_title: None,
+            value_axis_title: None,
         }
     }
 
@@ -317,6 +343,48 @@ impl ChartEx {
     #[must_use]
     pub fn parent_labels(mut self, labels: ParentLabels) -> Self {
         self.parent_labels = Some(labels);
+        self
+    }
+
+    /// Histogram and Pareto only: gathers values below `limit` into one bin.
+    #[must_use]
+    pub fn underflow(mut self, limit: f64) -> Self {
+        self.underflow = Some(limit);
+        self
+    }
+
+    /// Histogram and Pareto only: gathers values above `limit` into one bin.
+    #[must_use]
+    pub fn overflow(mut self, limit: f64) -> Self {
+        self.overflow = Some(limit);
+        self
+    }
+
+    /// Histogram and Pareto only: bins include their lower bound.
+    #[must_use]
+    pub fn bins_closed_left(mut self) -> Self {
+        self.bins_closed_left = true;
+        self
+    }
+
+    /// Waterfall only: shows or hides the lines joining the bars.
+    #[must_use]
+    pub fn connector_lines(mut self, show: bool) -> Self {
+        self.connector_lines = Some(show);
+        self
+    }
+
+    /// Titles the category axis.
+    #[must_use]
+    pub fn category_axis_title(mut self, text: impl Into<String>) -> Self {
+        self.category_axis_title = Some(text.into());
+        self
+    }
+
+    /// Titles the value axis.
+    #[must_use]
+    pub fn value_axis_title(mut self, text: impl Into<String>) -> Self {
+        self.value_axis_title = Some(text.into());
         self
     }
 
@@ -391,6 +459,33 @@ impl ChartEx {
         if self.parent_labels.is_some() && self.kind != ChartExKind::Treemap {
             return refuse("parent labels");
         }
+        let binned = matches!(self.kind, ChartExKind::Histogram | ChartExKind::Pareto);
+        if !binned && (self.underflow.is_some() || self.overflow.is_some() || self.bins_closed_left)
+        {
+            return refuse("overflow, underflow or closed-left bins");
+        }
+        if [self.underflow, self.overflow]
+            .into_iter()
+            .flatten()
+            .any(|v| !v.is_finite())
+        {
+            return refuse("an overflow or underflow that is not finite");
+        }
+        if let (Some(under), Some(over)) = (self.underflow, self.overflow) {
+            if under >= over {
+                return refuse("an underflow not below the overflow");
+            }
+        }
+        if self.connector_lines.is_some() && self.kind != ChartExKind::Waterfall {
+            return refuse("connector lines");
+        }
+        let has_axes = !matches!(self.kind, ChartExKind::Treemap | ChartExKind::Sunburst);
+        if !has_axes && self.category_axis_title.is_some() {
+            return refuse("a category axis title");
+        }
+        if (!has_axes || self.kind == ChartExKind::Funnel) && self.value_axis_title.is_some() {
+            return refuse("a value axis title");
+        }
         for (values, name) in self.all_series() {
             reference::check(values)?;
             if let Some(SeriesName::Reference(name)) = name {
@@ -461,23 +556,46 @@ impl ChartEx {
             Some(Bins::Width(width)) => format!(r#"<cx:binSize val="{width}"/>"#),
             None => String::new(),
         };
+        let mut binning = format!(
+            r#"<cx:binning intervalClosed="{}""#,
+            if self.bins_closed_left { "l" } else { "r" }
+        );
+        if let Some(under) = self.underflow {
+            binning.push_str(&format!(r#" underflow="{under}""#));
+        }
+        if let Some(over) = self.overflow {
+            binning.push_str(&format!(r#" overflow="{over}""#));
+        }
+        let binning = format!("{binning}>{bins}</cx:binning>");
+        let custom_bins = !bins.is_empty()
+            || self.underflow.is_some()
+            || self.overflow.is_some()
+            || self.bins_closed_left;
         let flag = |on: bool| if on { "1" } else { "0" };
         match kind {
             ChartExKind::Waterfall => {
-                out.push_str("<cx:layoutPr><cx:subtotals>");
+                out.push_str("<cx:layoutPr>");
+                if let Some(show) = self.connector_lines {
+                    out.push_str(&format!(
+                        r#"<cx:visibility connectorLines="{}"/>"#,
+                        flag(show)
+                    ));
+                }
+                out.push_str("<cx:subtotals>");
                 for point in &self.subtotals {
                     out.push_str(&format!(r#"<cx:idx val="{point}"/>"#));
                 }
                 out.push_str("</cx:subtotals></cx:layoutPr>");
             }
-            ChartExKind::Histogram => out.push_str(&format!(
-                r#"<cx:layoutPr><cx:binning intervalClosed="r">{bins}</cx:binning></cx:layoutPr>"#
-            )),
-            ChartExKind::Pareto if bins.is_empty() => out.push_str(
-                r#"<cx:layoutPr><cx:aggregation/></cx:layoutPr><cx:axisId val="1"/>"#,
-            ),
+            ChartExKind::Histogram => {
+                out.push_str(&format!("<cx:layoutPr>{binning}</cx:layoutPr>"))
+            }
+            // A Pareto without binning aggregates by category, as Excel's default.
+            ChartExKind::Pareto if !custom_bins => {
+                out.push_str(r#"<cx:layoutPr><cx:aggregation/></cx:layoutPr><cx:axisId val="1"/>"#)
+            }
             ChartExKind::Pareto => out.push_str(&format!(
-                r#"<cx:layoutPr><cx:binning intervalClosed="r">{bins}</cx:binning></cx:layoutPr><cx:axisId val="1"/>"#
+                r#"<cx:layoutPr>{binning}</cx:layoutPr><cx:axisId val="1"/>"#
             )),
             ChartExKind::BoxWhisker => {
                 let style = self.box_whisker.unwrap_or_default();
@@ -567,10 +685,20 @@ impl ChartEx {
             ));
         }
         out.push_str("</cx:plotAreaRegion>");
+        let axis_title = |text: &Option<String>| {
+            text.as_ref().map_or(String::new(), |text| {
+                format!(
+                    "<cx:title><cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx></cx:title>",
+                    escape(text)
+                )
+            })
+        };
+        let category_title = axis_title(&self.category_axis_title);
+        let value_title = axis_title(&self.value_axis_title);
         if kind == ChartExKind::Funnel {
-            out.push_str(
-                r#"<cx:axis id="1"><cx:catScaling gapWidth="0.0599999987"/><cx:tickLabels/></cx:axis>"#,
-            );
+            out.push_str(&format!(
+                r#"<cx:axis id="1"><cx:catScaling gapWidth="0.0599999987"/>{category_title}<cx:tickLabels/></cx:axis>"#,
+            ));
         }
         let gap = match kind {
             ChartExKind::Waterfall => Some("0.5"),
@@ -580,7 +708,7 @@ impl ChartEx {
         };
         if let Some(gap) = gap {
             out.push_str(&format!(
-                r#"<cx:axis id="0"><cx:catScaling gapWidth="{gap}"/><cx:tickLabels/></cx:axis><cx:axis id="1"><cx:valScaling/><cx:majorGridlines/><cx:tickLabels/></cx:axis>"#
+                r#"<cx:axis id="0"><cx:catScaling gapWidth="{gap}"/>{category_title}<cx:tickLabels/></cx:axis><cx:axis id="1"><cx:valScaling/>{value_title}<cx:majorGridlines/><cx:tickLabels/></cx:axis>"#
             ));
         }
         if kind == ChartExKind::Pareto {

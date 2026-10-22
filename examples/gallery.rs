@@ -267,6 +267,24 @@ fn run() {
             ChartEx::new(K::Histogram, vals).bins(Bins::Width(2.5)),
         ),
         ("cx_pareto", ChartEx::new(K::Pareto, vals).categories(cats)),
+        (
+            "cx_histogram_overflow",
+            ChartEx::new(K::Histogram, vals)
+                .bins(Bins::Count(3))
+                .underflow(3.0)
+                .overflow(15.0)
+                .bins_closed_left()
+                .category_axis_title("Bucket")
+                .value_axis_title("Count"),
+        ),
+        (
+            "cx_waterfall_axes",
+            ChartEx::new(K::Waterfall, vals)
+                .categories(cats)
+                .connector_lines(false)
+                .category_axis_title("Month")
+                .value_axis_title("Cash"),
+        ),
         ("cx_box_whisker", ChartEx::new(K::BoxWhisker, vals)),
         (
             "cx_box_whisker_full",
