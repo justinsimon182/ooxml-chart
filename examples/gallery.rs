@@ -10,7 +10,9 @@ use ooxml_chart::{
     Series, SeriesName, Shadow, TextStyle, TickLabels, TitleRun, Trendline, TrendlineKind, View3D,
 };
 use ooxml_chart::{
-    Gradient, LabelField, LabelPart, OfPie, OfPieSplit, Paint, Pattern, PatternKind,
+    Arrow, Bevel, Caps, Color, Compound, Corner, Dash, Gradient, GradientShape, LabelField,
+    LabelPart, LineCap, OfPie, OfPieSplit, Paint, Pattern, PatternKind, ShadowAlign, SystemColor,
+    ThemeColor, Underline,
 };
 use std::{env, fs, path::PathBuf};
 
@@ -187,6 +189,266 @@ fn run() {
             spec = spec.view_3d(View3D::new());
         }
         let part = spec.render().expect("an exploded chart");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+
+    // Excel's line, colour and text formats (the Format object model).
+    for (file, dash) in [
+        ("format_dash_dot", Dash::Dot),
+        ("format_dash_system_dash", Dash::SystemDash),
+        ("format_dash_system_dot", Dash::SystemDot),
+        ("format_dash_system_dash_dot", Dash::SystemDashDot),
+        ("format_dash_system_dash_dot_dot", Dash::SystemDashDotDot),
+        ("format_dash_dash", Dash::Dash),
+        ("format_dash_dash_dot", Dash::DashDot),
+        ("format_dash_long_dash", Dash::LongDash),
+        ("format_dash_long_dash_dot", Dash::LongDashDot),
+        ("format_dash_long_dash_dot_dot", Dash::LongDashDotDot),
+    ] {
+        let part = ChartSpec::new(ChartKind::Line)
+            .series(series("North", "B", "8E0DD1").with_dash(dash))
+            .series(series("South", "C", "0090B2"))
+            .render()
+            .expect("a dashed line");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+    let formats = [
+        (
+            "format_translucent",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_fill(Paint::Solid(Color::rgb("8E0DD1").transparency(50))),
+                )
+                .series(series("South", "C", "0090B2"))
+                .category_axis(
+                    Axis::default()
+                        .line_paint(Paint::Solid(Color::rgb("FF0000").transparency(40)))
+                        .line_width(2.0)
+                        .line_dash(Dash::Dash),
+                ),
+        ),
+        (
+            "format_gridlines",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series("North", "B", "8E0DD1"))
+                .value_axis(
+                    Axis::default().gridline_style(
+                        AreaStyle::new()
+                            .border("FF0000")
+                            .border_width(1.0)
+                            .border_dash(Dash::Dash),
+                    ),
+                ),
+        ),
+        (
+            "format_text",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title("Formatted")
+                .title_style(
+                    TextStyle::new()
+                        .bold(true)
+                        .italic(true)
+                        .underline(Underline::Single)
+                        .strike(true)
+                        .font("Arial"),
+                )
+                .series(series("North", "B", "8E0DD1"))
+                .value_axis(
+                    Axis::default().label_style(TextStyle::new().bold(true).color("FF0000")),
+                ),
+        ),
+    ];
+    // Every preset pattern, one point each.
+    let mut patterned = series("North", "B", "8E0DD1");
+    for (index, kind) in PatternKind::ALL.iter().enumerate() {
+        patterned = patterned.with_point(
+            index,
+            PointFormat::new().fill(Paint::Pattern(Pattern::new(*kind, "8E0DD1", "FFFFFF"))),
+        );
+    }
+    let formats = formats.into_iter().chain([
+        (
+            "format_patterns",
+            ChartSpec::new(ChartKind::ColumnClustered).series(patterned),
+        ),
+        (
+            "format_gradient_shapes",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series("North", "B", "8E0DD1").with_fill(Paint::Gradient(
+                    Gradient::from_center(GradientShape::Radial, [(0, "8E0DD1"), (100, "FFFFFF")]),
+                )))
+                .series(series("South", "C", "0090B2").with_fill(Paint::Gradient(
+                    Gradient::from_center(
+                        GradientShape::Rectangular,
+                        [(0, "0090B2"), (100, "FFFFFF")],
+                    ),
+                )))
+                .series(series("East", "D", "104991").with_fill(Paint::Gradient(
+                    Gradient::from_center(GradientShape::Path, [(0, "104991"), (100, "FFFFFF")]),
+                ))),
+        ),
+        (
+            "format_bevel_soft_edge",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(
+                    series("North", "B", "8E0DD1")
+                        .with_effects(Effects::new().bevel(Bevel::Circle)),
+                )
+                .series(
+                    series("South", "C", "0090B2")
+                        .with_effects(Effects::new().soft_edge(5.0).bevel(Bevel::ArtDeco)),
+                ),
+        ),
+        (
+            "format_label_boxes",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series("North", "B", "8E0DD1"))
+                .data_labels(
+                    DataLabels::values()
+                        .area(AreaStyle::new().fill("F0F0F0").border("010102"))
+                        .number_format("#,##0.00"),
+                ),
+        ),
+        (
+            "format_axis_text",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .series(series("North", "B", "8E0DD1"))
+                .value_axis(
+                    Axis::default().label_style(
+                        TextStyle::new()
+                            .font("Arial")
+                            .underline(Underline::Single)
+                            .strike(true)
+                            .size(12.0),
+                    ),
+                ),
+        ),
+    ]);
+    // Every colour base, plain, darker, lighter and transparent, one point each.
+    let mut bases: Vec<Color> = ThemeColor::ALL
+        .iter()
+        .map(|slot| Color::theme(*slot))
+        .collect();
+    bases.extend(SystemColor::ALL.iter().map(|system| Color::system(*system)));
+    bases.push(Color::rgb("28EAE4"));
+    let mut colored = series("North", "B", "8E0DD1");
+    for (index, base) in bases.iter().enumerate() {
+        for (offset, color) in [
+            base.clone(),
+            base.clone().darker(25),
+            base.clone().lighter(40),
+            base.clone().transparency(30),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            colored = colored.with_point(
+                4 * index + offset,
+                PointFormat::new().fill(Paint::Solid(color)),
+            );
+        }
+    }
+    // Every bevel, preset shadow, anchored shadow and corner gradient, one point each.
+    let mut shaped = series("North", "B", "8E0DD1");
+    let mut point = 0;
+    let mut add = |shaped: Series, format: PointFormat| {
+        point += 1;
+        shaped.with_point(point - 1, format)
+    };
+    for bevel in Bevel::ALL {
+        shaped = add(
+            shaped,
+            PointFormat::new().effects(Effects::new().bevel(bevel)),
+        );
+    }
+    for preset in 1..=20 {
+        shaped = add(
+            shaped,
+            PointFormat::new().effects(Effects::new().preset_shadow(preset, Shadow::new("000000"))),
+        );
+    }
+    for align in ShadowAlign::ALL {
+        let shadow = Shadow::new("000000")
+            .scale(100, -23)
+            .skew(13.34, 0.0)
+            .align(align);
+        shaped = add(
+            shaped,
+            PointFormat::new().effects(Effects::new().shadow(shadow)),
+        );
+    }
+    let scaled = Shadow::new("000000").scale(90, 102).skew(0.0, 5.0);
+    shaped = add(
+        shaped,
+        PointFormat::new().effects(Effects::new().shadow(scaled)),
+    );
+    for corner in Corner::ALL {
+        for shape in [
+            GradientShape::Radial,
+            GradientShape::Rectangular,
+            GradientShape::Path,
+        ] {
+            let gradient = Gradient::from_corner(shape, corner, [(0, "8E0DD1"), (100, "FFFFFF")]);
+            shaped = add(shaped, PointFormat::new().fill(Paint::Gradient(gradient)));
+        }
+    }
+    // Every compound, arrowhead and cap on a line of its own.
+    let mut lines = ChartSpec::new(ChartKind::Line);
+    for compound in Compound::ALL {
+        lines = lines.series(
+            series("North", "B", "8E0DD1")
+                .with_line_width(6.0)
+                .with_compound(compound),
+        );
+    }
+    for arrow in Arrow::ALL {
+        lines = lines.series(series("North", "B", "8E0DD1").with_arrows(Some(arrow), Some(arrow)));
+    }
+    for cap in LineCap::ALL {
+        lines = lines.series(
+            series("North", "B", "8E0DD1")
+                .with_dash(Dash::Dot)
+                .with_cap(cap),
+        );
+    }
+    // Every underline in a title run, and the other text settings on axes.
+    let runs = Underline::ALL
+        .iter()
+        .map(|underline| TitleRun::new("U ").style(TextStyle::new().underline(*underline)))
+        .chain(Caps::ALL.iter().map(|caps| {
+            TitleRun::new("C ").style(TextStyle::new().caps(*caps).spacing(3.0).baseline(30))
+        }));
+    let label_text = |underline, caps, baseline| {
+        Axis::default().label_style(
+            TextStyle::new()
+                .underline(underline)
+                .caps(caps)
+                .spacing(-1.5)
+                .baseline(baseline),
+        )
+    };
+    let formats = formats.chain([
+        (
+            "format_colors",
+            ChartSpec::new(ChartKind::ColumnClustered).series(colored),
+        ),
+        (
+            "format_shapes",
+            ChartSpec::new(ChartKind::ColumnClustered).series(shaped),
+        ),
+        ("format_line_ends", lines),
+        (
+            "format_text_more",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .title_runs(runs)
+                .series(series("North", "B", "8E0DD1"))
+                .category_axis(label_text(Underline::Words, Caps::Small, -25))
+                .value_axis(label_text(Underline::Double, Caps::All, 30)),
+        ),
+    ]);
+    for (file, spec) in formats {
+        let part = spec.render().expect("a format part");
         fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
     }
 

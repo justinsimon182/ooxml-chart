@@ -15,7 +15,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   gridlines, visibility, order, ticks, labels).
 - `scripts/excel_parity.py` also checks Excel's 126 chart elements
   (`Chart.SetElement`): 126 of 126 matched. The gallery gains the element
-  parts it needed (185 parts).
+  parts it needed.
+- Colours beyond six hex digits: `Paint::Solid(Color)`, where a `Color` is
+  an RGB, theme (`ThemeColor`) or system (`SystemColor`) colour, made
+  `darker`, `lighter` or partly transparent.
+- Line formats: `Dash` on series lines, axis lines, borders and trendlines;
+  `Compound` strokes, arrowheads (`Arrow`) and `LineCap` on series lines;
+  `Axis::gridline_style` for the major gridlines.
+- `Gradient::from_center` and `Gradient::from_corner` for radial,
+  rectangular and path gradients (`GradientShape`, `Corner`).
+- Effects: `Effects::bevel` (`Bevel`), `Effects::preset_shadow`, and
+  `Shadow::scale`, `skew` and `align` (`ShadowAlign`).
+- Text: `TextStyle::underline` (`Underline`), `strike`, `caps` (`Caps`),
+  `spacing` and `baseline` (superscript, subscript).
+- `DataLabels::area` fills and borders the label boxes.
+- `PatternKind::ALL` and an `ALL` list on each new enum.
+- `scripts/excel_parity.py` also has Excel apply every value of its
+  formatting options (216 formats; Excel refuses 11 more) and checks the
+  gallery writes each: 216 of 216 matched (207 parts).
 
 ## [0.8.0] - 2026-10-22
 

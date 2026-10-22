@@ -72,12 +72,13 @@ pub use drawing::{
 pub use error::ChartError;
 pub use metrics::{two_cell_anchor, CellAnchor, RowMetrics, TwoCellAnchor, UnknownHeight};
 pub use spec::{
-    AreaStyle, Axis, BarShape, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels,
-    DataTable, DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars,
-    ErrorValues, Glow, Gradient, GradientStop, LabelField, LabelPart, Layout, LegendPosition,
+    AreaStyle, Arrow, Axis, BarShape, Bevel, Caps, ChartKind, ChartPart, ChartSpec, Color,
+    ColorBase, Compound, Corner, Dash, DataLabelPosition, DataLabels, DataTable, DateUnit,
+    DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues, Glow,
+    Gradient, GradientShape, GradientStop, LabelField, LabelPart, Layout, LegendPosition, LineCap,
     MarkerSymbol, OfPie, OfPieSplit, Paint, Pattern, PatternKind, PictureFill, Plot, PointFormat,
-    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TickMark, TitleRun,
-    Trendline, TrendlineKind, View3D,
+    PointLabel, Position, Series, SeriesName, Shadow, ShadowAlign, SystemColor, TextStyle,
+    ThemeColor, TickLabels, TickMark, TitleRun, Trendline, TrendlineKind, Underline, View3D,
 };
 pub use style::{
     chart_colors_content_types_override, chart_style_content_types_override, ChartColors,
