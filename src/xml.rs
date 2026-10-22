@@ -27,6 +27,12 @@
 /// are dropped rather than written.
 pub(crate) fn escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
+    escape_into(&mut out, value);
+    out
+}
+
+/// [`escape`], appending to `out` rather than allocating.
+pub(crate) fn escape_into(out: &mut String, value: &str) {
     for c in value.chars() {
         match c {
             '&' => out.push_str("&amp;"),
@@ -43,7 +49,6 @@ pub(crate) fn escape(value: &str) -> String {
             _ => {}
         }
     }
-    out
 }
 
 #[cfg(test)]
