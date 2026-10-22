@@ -237,7 +237,9 @@ The other kinds draw one series.
 
 A pivot chart is an ordinary chart that names its pivot table. Excel draws its
 series from their caches, so each needs cached values (and cached categories
-when it has categories); the pivot table itself is yours to write:
+when it has categories); the pivot table itself is yours to write. Series
+colours and other formats survive a pivot refresh: Excel copies them into its
+own `c:pivotFmts` when it saves, so none are written here.
 
 ```rust
 use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
