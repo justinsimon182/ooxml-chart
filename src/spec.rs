@@ -270,6 +270,9 @@ pub struct Trendline {
     /// Line width in points.
     #[cfg_attr(feature = "serde", serde(default))]
     pub width_pt: Option<f64>,
+    /// Dash pattern of the line.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub dash: Option<Dash>,
     /// Periods to extend forward past the last point.
     #[cfg_attr(feature = "serde", serde(default))]
     pub forward: Option<f64>,
@@ -292,6 +295,7 @@ impl Trendline {
             name: None,
             color: None,
             width_pt: None,
+            dash: None,
             forward: None,
             backward: None,
             show_equation: false,
@@ -317,6 +321,13 @@ impl Trendline {
     #[must_use]
     pub fn width(mut self, points: f64) -> Self {
         self.width_pt = Some(points);
+        self
+    }
+
+    /// Draws the line dashed or dotted.
+    #[must_use]
+    pub fn dash(mut self, dash: Dash) -> Self {
+        self.dash = Some(dash);
         self
     }
 
@@ -385,6 +396,20 @@ pub struct Series {
     /// Line width in points.
     #[cfg_attr(feature = "serde", serde(default))]
     pub line_width_pt: Option<f64>,
+    /// Dash pattern of the series line. Only series drawn as a line take it.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub dash: Option<Dash>,
+    /// Strokes of the series line. Only series drawn as a line take it.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub compound: Option<Compound>,
+    /// Arrowheads at the start and end of the series line. Only series
+    /// drawn as a line take them.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub arrows: (Option<Arrow>, Option<Arrow>),
+    /// Line ends and dash ends; Excel's default is round. Only series drawn
+    /// as a line take it.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cap: Option<LineCap>,
     /// Draw the line as a smooth curve rather than straight segments.
     #[cfg_attr(feature = "serde", serde(default))]
     pub smooth: bool,
@@ -450,6 +475,10 @@ impl Series {
             fill: None,
             effects: None,
             line_width_pt: None,
+            dash: None,
+            compound: None,
+            arrows: (None, None),
+            cap: None,
             smooth: false,
             marker: None,
             multi_level_categories: false,
@@ -510,6 +539,37 @@ impl Series {
     #[must_use]
     pub fn with_line_width(mut self, points: f64) -> Self {
         self.line_width_pt = Some(points);
+        self
+    }
+
+    /// Draws the series line dashed or dotted: line, radar and scatter
+    /// series with lines only.
+    #[must_use]
+    pub fn with_dash(mut self, dash: Dash) -> Self {
+        self.dash = Some(dash);
+        self
+    }
+
+    /// Draws the series line as several strokes, like [`Self::with_dash`].
+    #[must_use]
+    pub fn with_compound(mut self, compound: Compound) -> Self {
+        self.compound = Some(compound);
+        self
+    }
+
+    /// Puts arrowheads on the series line's start and end, like
+    /// [`Self::with_dash`].
+    #[must_use]
+    pub fn with_arrows(mut self, start: Option<Arrow>, end: Option<Arrow>) -> Self {
+        self.arrows = (start, end);
+        self
+    }
+
+    /// Sets how the series line's ends and dashes are capped, like
+    /// [`Self::with_dash`].
+    #[must_use]
+    pub fn with_cap(mut self, cap: LineCap) -> Self {
+        self.cap = Some(cap);
         self
     }
 
@@ -939,6 +999,17 @@ pub struct TextStyle {
     pub color: Option<String>,
     /// Typeface name, e.g. `"Inter"`.
     pub font: Option<String>,
+    /// Underline style.
+    pub underline: Option<Underline>,
+    /// Extra space between characters in points; negative condenses.
+    pub spacing_pt: Option<f64>,
+    /// Capitals.
+    pub caps: Option<Caps>,
+    /// Raises (positive) or lowers the text by a percentage of its size:
+    /// 30 is Excel's superscript, -25 its subscript. -100 to 100.
+    pub baseline_pct: Option<i16>,
+    /// Single strikethrough or not.
+    pub strike: Option<bool>,
 }
 
 /// One run of a title: a piece of text with its own formatting.
@@ -1002,6 +1073,42 @@ impl TextStyle {
         self
     }
 
+    /// Underlines the text; [`Underline::None`] stops an inherited one.
+    #[must_use]
+    pub fn underline(mut self, underline: Underline) -> Self {
+        self.underline = Some(underline);
+        self
+    }
+
+    /// Spaces the characters `points` further apart; negative condenses.
+    #[must_use]
+    pub fn spacing(mut self, points: f64) -> Self {
+        self.spacing_pt = Some(points);
+        self
+    }
+
+    /// Sets capitals.
+    #[must_use]
+    pub fn caps(mut self, caps: Caps) -> Self {
+        self.caps = Some(caps);
+        self
+    }
+
+    /// Raises or lowers the text by `percent` of its size: 30 is a
+    /// superscript, -25 a subscript.
+    #[must_use]
+    pub fn baseline(mut self, percent: i16) -> Self {
+        self.baseline_pct = Some(percent);
+        self
+    }
+
+    /// Strikes the text through, or stops an inherited strikethrough.
+    #[must_use]
+    pub fn strike(mut self, strike: bool) -> Self {
+        self.strike = Some(strike);
+        self
+    }
+
     /// Sets the colour, six hex digits without `#`.
     #[must_use]
     pub fn color(mut self, rgb: impl Into<String>) -> Self {
@@ -1038,6 +1145,447 @@ pub enum Paint {
     /// An image, reached through a relationship on the chart part. A fill
     /// only: lines refuse it.
     Picture(PictureFill),
+    /// A solid theme or system colour, or one made darker, lighter or
+    /// partly transparent; see [`Color`].
+    Solid(Color),
+}
+
+/// A colour slot of the workbook theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ThemeColor {
+    /// Text 1, usually black.
+    Text1,
+    /// Background 1, usually white.
+    Background1,
+    /// Text 2.
+    Text2,
+    /// Background 2.
+    Background2,
+    /// Accent 1.
+    Accent1,
+    /// Accent 2.
+    Accent2,
+    /// Accent 3.
+    Accent3,
+    /// Accent 4.
+    Accent4,
+    /// Accent 5.
+    Accent5,
+    /// Accent 6.
+    Accent6,
+    /// Hyperlink.
+    Hyperlink,
+    /// Followed hyperlink.
+    FollowedHyperlink,
+}
+
+impl ThemeColor {
+    /// Every value.
+    pub const ALL: [ThemeColor; 12] = [
+        ThemeColor::Text1,
+        ThemeColor::Background1,
+        ThemeColor::Text2,
+        ThemeColor::Background2,
+        ThemeColor::Accent1,
+        ThemeColor::Accent2,
+        ThemeColor::Accent3,
+        ThemeColor::Accent4,
+        ThemeColor::Accent5,
+        ThemeColor::Accent6,
+        ThemeColor::Hyperlink,
+        ThemeColor::FollowedHyperlink,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Text1 => "tx1",
+            Self::Background1 => "bg1",
+            Self::Text2 => "tx2",
+            Self::Background2 => "bg2",
+            Self::Accent1 => "accent1",
+            Self::Accent2 => "accent2",
+            Self::Accent3 => "accent3",
+            Self::Accent4 => "accent4",
+            Self::Accent5 => "accent5",
+            Self::Accent6 => "accent6",
+            Self::Hyperlink => "hlink",
+            Self::FollowedHyperlink => "folHlink",
+        }
+    }
+}
+
+/// A colour of the operating system's scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum SystemColor {
+    /// The window background, usually white.
+    Window,
+    /// Window text, usually black.
+    WindowText,
+}
+
+impl SystemColor {
+    /// Every value.
+    pub const ALL: [SystemColor; 2] = [SystemColor::Window, SystemColor::WindowText];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Window => "window",
+            Self::WindowText => "windowText",
+        }
+    }
+}
+
+impl SystemColor {
+    /// The value Excel records beside the name.
+    pub(crate) fn last(self) -> &'static str {
+        match self {
+            Self::Window => "FFFFFF",
+            Self::WindowText => "000000",
+        }
+    }
+}
+
+/// Where a [`Color`] takes its hue from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ColorBase {
+    /// Six hex digits without `#`.
+    Rgb(String),
+    /// A slot of the workbook theme, so the colour follows a theme change.
+    Theme(ThemeColor),
+    /// A colour of the operating system's scheme.
+    System(SystemColor),
+}
+
+/// A colour that is more than six hex digits: a theme or system colour,
+/// made darker or lighter, or partly transparent. Use it through
+/// [`Paint::Solid`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct Color {
+    /// The hue.
+    pub base: ColorBase,
+    /// Luminance times this percentage, 0-100.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lum_mod: Option<u8>,
+    /// Then plus this percentage of full luminance, 0-100.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lum_off: Option<u8>,
+    /// Transparency, 0-100 percent.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub transparency: Option<u8>,
+}
+
+impl Color {
+    fn of(base: ColorBase) -> Self {
+        Self {
+            base,
+            lum_mod: None,
+            lum_off: None,
+            transparency: None,
+        }
+    }
+
+    /// An RGB colour, six hex digits without `#`.
+    pub fn rgb(rgb: impl Into<String>) -> Self {
+        Self::of(ColorBase::Rgb(rgb.into()))
+    }
+
+    /// A theme colour.
+    pub fn theme(slot: ThemeColor) -> Self {
+        Self::of(ColorBase::Theme(slot))
+    }
+
+    /// A system colour.
+    pub fn system(color: SystemColor) -> Self {
+        Self::of(ColorBase::System(color))
+    }
+
+    /// Darker by `percent` (above 100 counts as 100), as Excel's colour
+    /// picker's "Darker 25%" is `darker(25)`.
+    #[must_use]
+    pub fn darker(mut self, percent: u8) -> Self {
+        self.lum_mod = Some(100u8.saturating_sub(percent));
+        self.lum_off = None;
+        self
+    }
+
+    /// Lighter by `percent` (above 100 counts as 100), as Excel's colour
+    /// picker's "Lighter 40%" is `lighter(40)`.
+    #[must_use]
+    pub fn lighter(mut self, percent: u8) -> Self {
+        let percent = percent.min(100);
+        self.lum_mod = Some(100 - percent);
+        self.lum_off = Some(percent);
+        self
+    }
+
+    /// Makes the colour `percent` transparent, 0-100.
+    #[must_use]
+    pub fn transparency(mut self, percent: u8) -> Self {
+        self.transparency = Some(percent);
+        self
+    }
+}
+
+/// A corner a gradient spreads from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Corner {
+    /// Top left.
+    TopLeft,
+    /// Top right.
+    TopRight,
+    /// Bottom left.
+    BottomLeft,
+    /// Bottom right.
+    BottomRight,
+}
+
+impl Corner {
+    /// Every value.
+    pub const ALL: [Corner; 4] = [
+        Corner::TopLeft,
+        Corner::TopRight,
+        Corner::BottomLeft,
+        Corner::BottomRight,
+    ];
+}
+
+/// The point a scaled or skewed shadow is anchored to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ShadowAlign {
+    /// Top left.
+    TopLeft,
+    /// Top.
+    Top,
+    /// Top right.
+    TopRight,
+    /// Left.
+    Left,
+    /// Centre.
+    Center,
+    /// Right.
+    Right,
+    /// Bottom left.
+    BottomLeft,
+    /// Bottom.
+    Bottom,
+    /// Bottom right.
+    BottomRight,
+}
+
+impl ShadowAlign {
+    /// Every value.
+    pub const ALL: [ShadowAlign; 9] = [
+        ShadowAlign::TopLeft,
+        ShadowAlign::Top,
+        ShadowAlign::TopRight,
+        ShadowAlign::Left,
+        ShadowAlign::Center,
+        ShadowAlign::Right,
+        ShadowAlign::BottomLeft,
+        ShadowAlign::Bottom,
+        ShadowAlign::BottomRight,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::TopLeft => "tl",
+            Self::Top => "t",
+            Self::TopRight => "tr",
+            Self::Left => "l",
+            Self::Center => "ctr",
+            Self::Right => "r",
+            Self::BottomLeft => "bl",
+            Self::Bottom => "b",
+            Self::BottomRight => "br",
+        }
+    }
+}
+
+/// How the ends of a line, and of each dash, are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum LineCap {
+    /// Rounded.
+    Round,
+    /// Squared off past the end.
+    Square,
+    /// Cut at the end.
+    Flat,
+}
+
+impl LineCap {
+    /// Every value.
+    pub const ALL: [LineCap; 3] = [LineCap::Round, LineCap::Square, LineCap::Flat];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Round => "rnd",
+            Self::Square => "sq",
+            Self::Flat => "flat",
+        }
+    }
+}
+
+/// An underline style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Underline {
+    /// No underline.
+    None,
+    /// Single.
+    Single,
+    /// Double.
+    Double,
+    /// Heavy.
+    Heavy,
+    /// Dotted.
+    Dotted,
+    /// Dashed.
+    Dash,
+    /// Wavy.
+    Wavy,
+    /// Under words, not spaces.
+    Words,
+}
+
+impl Underline {
+    /// Every value.
+    pub const ALL: [Underline; 8] = [
+        Underline::None,
+        Underline::Single,
+        Underline::Double,
+        Underline::Heavy,
+        Underline::Dotted,
+        Underline::Dash,
+        Underline::Wavy,
+        Underline::Words,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Single => "sng",
+            Self::Double => "dbl",
+            Self::Heavy => "heavy",
+            Self::Dotted => "dotted",
+            Self::Dash => "dash",
+            Self::Wavy => "wavy",
+            Self::Words => "words",
+        }
+    }
+}
+
+/// Capitals applied to text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Caps {
+    /// As typed.
+    None,
+    /// Small capitals.
+    Small,
+    /// All capitals.
+    All,
+}
+
+impl Caps {
+    /// Every value.
+    pub const ALL: [Caps; 3] = [Caps::None, Caps::Small, Caps::All];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Small => "small",
+            Self::All => "all",
+        }
+    }
+}
+
+/// The dash pattern of a line: DrawingML's preset dashes (`a:prstDash`).
+/// The `System` ones scale with the line width less than the others.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Dash {
+    /// `solid`.
+    Solid,
+    /// `dot`.
+    Dot,
+    /// `dash`.
+    Dash,
+    /// `lgDash`.
+    LongDash,
+    /// `dashDot`.
+    DashDot,
+    /// `lgDashDot`.
+    LongDashDot,
+    /// `lgDashDotDot`.
+    LongDashDotDot,
+    /// `sysDash`.
+    SystemDash,
+    /// `sysDot`.
+    SystemDot,
+    /// `sysDashDot`.
+    SystemDashDot,
+    /// `sysDashDotDot`.
+    SystemDashDotDot,
+}
+
+impl Dash {
+    /// Every value.
+    pub const ALL: [Dash; 11] = [
+        Dash::Solid,
+        Dash::Dot,
+        Dash::Dash,
+        Dash::LongDash,
+        Dash::DashDot,
+        Dash::LongDashDot,
+        Dash::LongDashDotDot,
+        Dash::SystemDash,
+        Dash::SystemDot,
+        Dash::SystemDashDot,
+        Dash::SystemDashDotDot,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Solid => "solid",
+            Self::Dot => "dot",
+            Self::Dash => "dash",
+            Self::LongDash => "lgDash",
+            Self::DashDot => "dashDot",
+            Self::LongDashDot => "lgDashDot",
+            Self::LongDashDotDot => "lgDashDotDot",
+            Self::SystemDash => "sysDash",
+            Self::SystemDot => "sysDot",
+            Self::SystemDashDot => "sysDashDot",
+            Self::SystemDashDotDot => "sysDashDotDot",
+        }
+    }
 }
 
 /// An image that fills a shape: bars, areas, slices, bubbles and the chart,
@@ -1102,6 +1650,12 @@ pub struct Gradient {
     pub angle: u16,
     /// The stops, two to ten, positions not decreasing.
     pub stops: Vec<GradientStop>,
+    /// How the stops spread; the angle applies to a linear one only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shape: GradientShape,
+    /// The corner a non-linear gradient spreads from; `None` is the centre.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub corner: Option<Corner>,
 }
 
 impl Gradient {
@@ -1117,6 +1671,206 @@ impl Gradient {
                     color: color.into(),
                 })
                 .collect(),
+            shape: GradientShape::Linear,
+            corner: None,
+        }
+    }
+
+    /// A gradient of `stops` spreading from a `corner` in a `shape`.
+    pub fn from_corner<C: Into<String>>(
+        shape: GradientShape,
+        corner: Corner,
+        stops: impl IntoIterator<Item = (u8, C)>,
+    ) -> Self {
+        Self {
+            shape,
+            corner: Some(corner),
+            ..Self::linear(0, stops)
+        }
+    }
+
+    /// A gradient of `stops` spreading from the centre in a `shape`:
+    /// radial, rectangular or along the outline.
+    pub fn from_center<C: Into<String>>(
+        shape: GradientShape,
+        stops: impl IntoIterator<Item = (u8, C)>,
+    ) -> Self {
+        Self {
+            shape,
+            ..Self::linear(0, stops)
+        }
+    }
+}
+
+/// A line drawn as one or several parallel strokes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Compound {
+    /// One stroke.
+    Single,
+    /// Two equal strokes.
+    Double,
+    /// A thick stroke then a thin one.
+    ThickThin,
+    /// A thin stroke then a thick one.
+    ThinThick,
+    /// Three strokes, the middle one thick.
+    Triple,
+}
+
+impl Compound {
+    /// Every value.
+    pub const ALL: [Compound; 5] = [
+        Compound::Single,
+        Compound::Double,
+        Compound::ThickThin,
+        Compound::ThinThick,
+        Compound::Triple,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Single => "sng",
+            Self::Double => "dbl",
+            Self::ThickThin => "thickThin",
+            Self::ThinThick => "thinThick",
+            Self::Triple => "tri",
+        }
+    }
+}
+
+/// An arrowhead at one end of a line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Arrow {
+    /// A filled triangle.
+    Triangle,
+    /// An open arrow.
+    Open,
+    /// A stealth arrow.
+    Stealth,
+    /// A diamond.
+    Diamond,
+    /// An oval.
+    Oval,
+}
+
+impl Arrow {
+    /// Every value.
+    pub const ALL: [Arrow; 5] = [
+        Arrow::Triangle,
+        Arrow::Open,
+        Arrow::Stealth,
+        Arrow::Diamond,
+        Arrow::Oval,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Triangle => "triangle",
+            Self::Open => "arrow",
+            Self::Stealth => "stealth",
+            Self::Diamond => "diamond",
+            Self::Oval => "oval",
+        }
+    }
+}
+
+/// The shape of a bevel on a shape's top edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum Bevel {
+    /// Circle.
+    Circle,
+    /// Relaxed inset.
+    RelaxedInset,
+    /// Cross.
+    Cross,
+    /// Cool slant.
+    CoolSlant,
+    /// Angle.
+    Angle,
+    /// Soft round.
+    SoftRound,
+    /// Convex.
+    Convex,
+    /// Slope.
+    Slope,
+    /// Divot.
+    Divot,
+    /// Riblet.
+    Riblet,
+    /// Hard edge.
+    HardEdge,
+    /// Art deco.
+    ArtDeco,
+}
+
+impl Bevel {
+    /// Every value.
+    pub const ALL: [Bevel; 12] = [
+        Bevel::Circle,
+        Bevel::RelaxedInset,
+        Bevel::Cross,
+        Bevel::CoolSlant,
+        Bevel::Angle,
+        Bevel::SoftRound,
+        Bevel::Convex,
+        Bevel::Slope,
+        Bevel::Divot,
+        Bevel::Riblet,
+        Bevel::HardEdge,
+        Bevel::ArtDeco,
+    ];
+
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Circle => "circle",
+            Self::RelaxedInset => "relaxedInset",
+            Self::Cross => "cross",
+            Self::CoolSlant => "coolSlant",
+            Self::Angle => "angle",
+            Self::SoftRound => "softRound",
+            Self::Convex => "convex",
+            Self::Slope => "slope",
+            Self::Divot => "divot",
+            Self::Riblet => "riblet",
+            Self::HardEdge => "hardEdge",
+            Self::ArtDeco => "artDeco",
+        }
+    }
+}
+
+/// How a gradient spreads its stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum GradientShape {
+    /// Along a line at the gradient's angle.
+    #[default]
+    Linear,
+    /// In circles out from the centre.
+    Radial,
+    /// In rectangles out from the centre.
+    Rectangular,
+    /// Following the shape's outline, out from the centre.
+    Path,
+}
+
+impl GradientShape {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Linear => "",
+            Self::Radial => "circle",
+            Self::Rectangular => "rect",
+            Self::Path => "shape",
         }
     }
 }
@@ -1238,6 +1992,64 @@ pub enum PatternKind {
 }
 
 impl PatternKind {
+    /// Every pattern.
+    pub const ALL: [PatternKind; 54] = [
+        PatternKind::Percent5,
+        PatternKind::Percent10,
+        PatternKind::Percent20,
+        PatternKind::Percent25,
+        PatternKind::Percent30,
+        PatternKind::Percent40,
+        PatternKind::Percent50,
+        PatternKind::Percent60,
+        PatternKind::Percent70,
+        PatternKind::Percent75,
+        PatternKind::Percent80,
+        PatternKind::Percent90,
+        PatternKind::Horizontal,
+        PatternKind::Vertical,
+        PatternKind::LightHorizontal,
+        PatternKind::LightVertical,
+        PatternKind::DarkHorizontal,
+        PatternKind::DarkVertical,
+        PatternKind::NarrowHorizontal,
+        PatternKind::NarrowVertical,
+        PatternKind::DashedHorizontal,
+        PatternKind::DashedVertical,
+        PatternKind::Cross,
+        PatternKind::DownwardDiagonal,
+        PatternKind::UpwardDiagonal,
+        PatternKind::LightDownwardDiagonal,
+        PatternKind::LightUpwardDiagonal,
+        PatternKind::DarkDownwardDiagonal,
+        PatternKind::DarkUpwardDiagonal,
+        PatternKind::WideDownwardDiagonal,
+        PatternKind::WideUpwardDiagonal,
+        PatternKind::DashedDownwardDiagonal,
+        PatternKind::DashedUpwardDiagonal,
+        PatternKind::DiagonalCross,
+        PatternKind::SmallCheckerBoard,
+        PatternKind::LargeCheckerBoard,
+        PatternKind::SmallGrid,
+        PatternKind::LargeGrid,
+        PatternKind::DottedGrid,
+        PatternKind::SmallConfetti,
+        PatternKind::LargeConfetti,
+        PatternKind::HorizontalBrick,
+        PatternKind::DiagonalBrick,
+        PatternKind::SolidDiamond,
+        PatternKind::OpenDiamond,
+        PatternKind::DottedDiamond,
+        PatternKind::Plaid,
+        PatternKind::Sphere,
+        PatternKind::Weave,
+        PatternKind::Divot,
+        PatternKind::Shingle,
+        PatternKind::Wave,
+        PatternKind::Trellis,
+        PatternKind::ZigZag,
+    ];
+
     pub(crate) fn code(self) -> &'static str {
         match self {
             PatternKind::Percent5 => "pct5",
@@ -1341,6 +2153,8 @@ pub struct AreaStyle {
     pub border: Option<Paint>,
     /// Border width in points.
     pub border_width_pt: Option<f64>,
+    /// Dash pattern of the border.
+    pub border_dash: Option<Dash>,
     /// Shadow, glow and soft edge.
     pub effects: Option<Effects>,
 }
@@ -1400,6 +2214,13 @@ impl AreaStyle {
         self
     }
 
+    /// Draws the border dashed or dotted.
+    #[must_use]
+    pub fn border_dash(mut self, dash: Dash) -> Self {
+        self.border_dash = Some(dash);
+        self
+    }
+
     /// Adds shadow, glow or soft-edge effects.
     #[must_use]
     pub fn effects(mut self, effects: Effects) -> Self {
@@ -1427,6 +2248,17 @@ pub struct Shadow {
     pub angle: u16,
     /// Opacity as a percentage (0 to 100).
     pub opacity: u8,
+    /// Horizontal and vertical size in percent (-200 to 200; negative
+    /// flips). Outer shadows only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub scale: Option<(i16, i16)>,
+    /// Horizontal and vertical skew in degrees (-89 to 89). Outer shadows
+    /// only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub skew: Option<(f64, f64)>,
+    /// The point scaling and skew are anchored to. Outer shadows only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub align: Option<ShadowAlign>,
 }
 
 impl Shadow {
@@ -1438,7 +2270,32 @@ impl Shadow {
             distance_pt: 3.0,
             angle: 45,
             opacity: 40,
+            scale: None,
+            skew: None,
+            align: None,
         }
+    }
+
+    /// Sizes the shadow: `x` and `y` percent of the shape, negative to flip.
+    /// Outer shadows only.
+    #[must_use]
+    pub fn scale(mut self, x: i16, y: i16) -> Self {
+        self.scale = Some((x, y));
+        self
+    }
+
+    /// Skews the shadow by `x` and `y` degrees. Outer shadows only.
+    #[must_use]
+    pub fn skew(mut self, x: f64, y: f64) -> Self {
+        self.skew = Some((x, y));
+        self
+    }
+
+    /// Anchors the shadow's scale and skew. Outer shadows only.
+    #[must_use]
+    pub fn align(mut self, align: ShadowAlign) -> Self {
+        self.align = Some(align);
+        self
     }
 
     /// Sets the blur in points.
@@ -1517,6 +2374,11 @@ pub struct Effects {
     pub glow: Option<Glow>,
     /// Fades the shape's edge over this many points (0 to 100).
     pub soft_edge_pt: Option<f64>,
+    /// A 6-point bevel of this shape on the top edge.
+    pub bevel: Option<Bevel>,
+    /// One of DrawingML's 20 preset shadows (1-20), with the shadow's
+    /// colour, opacity, distance and angle.
+    pub preset_shadow: Option<(u8, Shadow)>,
 }
 
 impl Effects {
@@ -1550,6 +2412,21 @@ impl Effects {
     #[must_use]
     pub fn soft_edge(mut self, points: f64) -> Self {
         self.soft_edge_pt = Some(points);
+        self
+    }
+
+    /// Bevels the top edge.
+    #[must_use]
+    pub fn bevel(mut self, bevel: Bevel) -> Self {
+        self.bevel = Some(bevel);
+        self
+    }
+
+    /// Adds preset shadow `preset` (1-20), coloured and placed by `shadow`;
+    /// its blur, scale, skew and alignment do not apply.
+    #[must_use]
+    pub fn preset_shadow(mut self, preset: u8, shadow: Shadow) -> Self {
+        self.preset_shadow = Some((preset, shadow));
         self
     }
 }
@@ -1768,6 +2645,11 @@ pub struct Axis {
     pub line: Option<Paint>,
     /// Width of the axis line in points.
     pub line_width_pt: Option<f64>,
+    /// Dash pattern of the axis line.
+    pub line_dash: Option<Dash>,
+    /// Colour, width and dash of the major gridlines, from the style's
+    /// border. Needs `major_gridlines`.
+    pub gridline_style: Option<AreaStyle>,
     /// Font for the tick labels.
     pub label_style: Option<TextStyle>,
     /// Cross the other axis at its maximum instead of at zero. On a horizontal
@@ -1824,6 +2706,8 @@ impl Default for Axis {
             title_position: None,
             line: None,
             line_width_pt: None,
+            line_dash: None,
+            gridline_style: None,
             label_style: None,
             crosses_max: false,
             crosses_at: None,
@@ -1984,6 +2868,22 @@ impl Axis {
     #[must_use]
     pub fn line_width(mut self, points: f64) -> Self {
         self.line_width_pt = Some(points);
+        self
+    }
+
+    /// Draws the axis line dashed or dotted.
+    #[must_use]
+    pub fn line_dash(mut self, dash: Dash) -> Self {
+        self.line_dash = Some(dash);
+        self
+    }
+
+    /// Formats the major gridlines with the style's border colour, width
+    /// and dash, and turns them on.
+    #[must_use]
+    pub fn gridline_style(mut self, style: AreaStyle) -> Self {
+        self.major_gridlines = true;
+        self.gridline_style = Some(style);
         self
     }
 
@@ -2148,6 +3048,8 @@ pub struct DataLabels {
     pub number_format: Option<String>,
     /// Font for the labels.
     pub style: Option<TextStyle>,
+    /// Fill, border and effects of the label boxes.
+    pub area: Option<AreaStyle>,
     /// Draw leader lines from labels that sit away from their slice. Pie and
     /// doughnut only.
     pub leader_lines: bool,
@@ -2169,6 +3071,13 @@ impl DataLabels {
     #[must_use]
     pub fn with_category(mut self) -> Self {
         self.category = true;
+        self
+    }
+
+    /// Fills, borders or adds effects to the label boxes.
+    #[must_use]
+    pub fn area(mut self, style: AreaStyle) -> Self {
+        self.area = Some(style);
         self
     }
 
@@ -3524,5 +4433,135 @@ mod tests {
         )));
         assert!(!out.contains("<c:cat>"), "{out}");
         assert!(out.contains("<c:val>"), "{out}");
+    }
+
+    fn column(series: Series) -> ChartSpec {
+        ChartSpec::new(ChartKind::ColumnClustered).series(series)
+    }
+
+    #[test]
+    fn colours_take_a_theme_or_system_base_brightness_and_transparency() {
+        let paint = |color| one_series().with_fill(Paint::Solid(color));
+        let out = rendered(column(paint(Color::theme(ThemeColor::Accent1).darker(25))));
+        assert!(
+            out.contains(r#"<a:schemeClr val="accent1"><a:lumMod val="75000"/></a:schemeClr>"#),
+            "{out}"
+        );
+        let out = rendered(column(paint(
+            Color::system(SystemColor::Window).lighter(40),
+        )));
+        assert!(
+            out.contains(r#"<a:sysClr val="window" lastClr="FFFFFF"><a:lumMod val="60000"/><a:lumOff val="40000"/></a:sysClr>"#),
+            "{out}"
+        );
+        let out = rendered(column(paint(Color::rgb("8e0dd1").transparency(30))));
+        assert!(
+            out.contains(r#"<a:srgbClr val="8E0DD1"><a:alpha val="70000"/></a:srgbClr>"#),
+            "{out}"
+        );
+        let mut too_bright = Color::rgb("8E0DD1");
+        too_bright.lum_mod = Some(101);
+        assert!(matches!(
+            column(paint(too_bright)).render(),
+            Err(ChartError::InvalidFill { .. })
+        ));
+    }
+
+    #[test]
+    fn a_series_line_takes_dash_compound_arrows_and_cap_only_where_drawn() {
+        let styled = one_series()
+            .with_dash(Dash::Dot)
+            .with_compound(Compound::ThinThick)
+            .with_arrows(None, Some(Arrow::Triangle))
+            .with_cap(LineCap::Square);
+        let out = rendered(ChartSpec::new(ChartKind::Line).series(styled.clone()));
+        assert!(
+            out.contains(r#"<a:ln cmpd="thinThick" cap="sq"><a:prstDash val="dot"/><a:round/><a:tailEnd type="triangle"/></a:ln>"#),
+            "{out}"
+        );
+        for kind in [ChartKind::ColumnClustered, ChartKind::Scatter] {
+            assert!(matches!(
+                ChartSpec::new(kind).series(styled.clone()).render(),
+                Err(ChartError::Unsupported { .. })
+            ));
+        }
+        let gridlines = Axis::default()
+            .gridline_style(AreaStyle::new().border("FF0000").border_dash(Dash::Dash));
+        let out = rendered(column(one_series()).value_axis(gridlines));
+        assert!(
+            out.contains(r#"<c:majorGridlines><c:spPr><a:ln><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:prstDash val="dash"/></a:ln></c:spPr></c:majorGridlines>"#),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn bevels_preset_and_anchored_shadows_and_corner_gradients_write_as_excel_does() {
+        let effects = |effects| column(one_series().with_effects(effects));
+        let out = rendered(effects(Effects::new().bevel(Bevel::Circle)));
+        assert!(out.contains("<a:sp3d><a:bevelT/></a:sp3d>"), "{out}");
+        let out = rendered(effects(Effects::new().bevel(Bevel::ArtDeco)));
+        assert!(out.contains(r#"<a:bevelT prst="artDeco"/>"#), "{out}");
+        let out = rendered(effects(
+            Effects::new()
+                .preset_shadow(3, Shadow::new("000000"))
+                .shadow(
+                    Shadow::new("000000")
+                        .scale(100, -23)
+                        .align(ShadowAlign::Bottom),
+                ),
+        ));
+        assert!(out.contains(r#"<a:prstShdw prst="shdw3""#), "{out}");
+        assert!(
+            out.contains(r#"dir="2700000" sy="-23000" rotWithShape="0">"#),
+            "{out}"
+        );
+        for bad in [
+            Effects::new().preset_shadow(21, Shadow::new("000000")),
+            Effects::new().inner_shadow(Shadow::new("000000").scale(50, 50)),
+        ] {
+            assert!(effects(bad).render().is_err());
+        }
+        let corner = Gradient::from_corner(
+            GradientShape::Rectangular,
+            Corner::TopLeft,
+            [(0, "8E0DD1"), (100, "FFFFFF")],
+        );
+        let out = rendered(column(one_series().with_fill(Paint::Gradient(corner))));
+        assert!(
+            out.contains(r#"<a:path path="rect"><a:fillToRect r="100000" b="100000"/></a:path><a:tileRect l="-100000" t="-100000"/>"#),
+            "{out}"
+        );
+        let linear_corner = Gradient {
+            corner: Some(Corner::TopLeft),
+            ..Gradient::linear(0, [(0, "8E0DD1"), (100, "FFFFFF")])
+        };
+        assert!(matches!(
+            column(one_series().with_fill(Paint::Gradient(linear_corner))).render(),
+            Err(ChartError::InvalidFill { .. })
+        ));
+    }
+
+    #[test]
+    fn text_takes_underline_caps_spacing_and_baseline_and_labels_a_box() {
+        let style = TextStyle::new()
+            .underline(Underline::Double)
+            .caps(Caps::All)
+            .spacing(3.0)
+            .baseline(30);
+        let out = rendered(column(one_series()).value_axis(Axis::default().label_style(style)));
+        assert!(
+            out.contains(r#"<a:defRPr u="dbl" cap="all" spc="300" baseline="30000"/>"#),
+            "{out}"
+        );
+        let too_high = Axis::default().label_style(TextStyle::new().baseline(101));
+        assert!(column(one_series()).value_axis(too_high).render().is_err());
+        let labels = DataLabels::values()
+            .number_format("0.0")
+            .area(AreaStyle::new().fill("F0F0F0"));
+        let out = rendered(column(one_series()).data_labels(labels));
+        assert!(
+            out.contains(r#"<c:numFmt formatCode="0.0" sourceLinked="0"/><c:spPr><a:solidFill><a:srgbClr val="F0F0F0"/></a:solidFill></c:spPr>"#),
+            "{out}"
+        );
     }
 }

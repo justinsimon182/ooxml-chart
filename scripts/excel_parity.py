@@ -13,6 +13,16 @@ bare chart, by element path and `val`, must all appear in the gallery (copies
 Excel writes on each series aside, and free numbers matched by path); what it
 removes must be absent from some gallery part.
 
+Last, Excel formats a base chart through its Format object model, once per
+value of each formatting option (fills, colours with brightness and
+transparency, lines, dashes, compounds, arrowheads, shadows, glow, soft edges,
+bevels, fonts, number formats). What a format adds to the shape and text
+properties must appear in some gallery part, matched from the `spPr`/`txPr`
+root so a format counts wherever the gallery shows it. Numbers, hex colours and
+font names are free when the gallery has that attribute; defaults Excel spells
+out, and exact equivalents (preset black for sRGB 000000, the alignment of an
+unscaled shadow) are not differences.
+
     cargo run --example gallery -- out
     python scripts/excel_parity.py out
 """
@@ -226,6 +236,197 @@ def element_parity(work, gallery_dir):
     # An element Excel itself refuses on every base is no feature to match.
     return missed == 0
 
+FORMATS_POWERSHELL = r"""param($out, $only = '.')
+Add-Type -AssemblyName office
+$xl = New-Object -ComObject Excel.Application
+$xl.DisplayAlerts = $false
+# Each format: base chart type (51 column, 4 line) and what Excel's Format object model does to it.
+$formats = [ordered]@{
+  'base_51'            = @(51, { })
+  'base_4'             = @(4, { })
+  'base_labels'        = @(51, { $c.SeriesCollection(1).HasDataLabels = $true })
+  'fill_solid'         = @(51, { $c.SeriesCollection(1).Format.Fill.ForeColor.RGB = 255; $c.SeriesCollection(1).Format.Fill.Solid() })
+  'fill_transparent'   = @(51, { $f = $c.SeriesCollection(1).Format.Fill; $f.Solid(); $f.ForeColor.RGB = 255; $f.Transparency = 0.5 })
+  'fill_theme'         = @(51, { $f = $c.SeriesCollection(1).Format.Fill; $f.Solid(); $f.ForeColor.ObjectThemeColor = 6 })
+  'fill_gradient'      = @(51, { $c.SeriesCollection(1).Format.Fill.TwoColorGradient(1, 1) })
+  'fill_gradient_rad'  = @(51, { $c.SeriesCollection(1).Format.Fill.TwoColorGradient(7, 1) })
+  'fill_preset'        = @(51, { $c.SeriesCollection(1).Format.Fill.PresetGradient(1, 1, 2) })
+  'fill_pattern'       = @(51, { $c.SeriesCollection(1).Format.Fill.Patterned(5) })
+  'fill_none'          = @(51, { $c.SeriesCollection(1).Format.Fill.Visible = 0 })
+  'border_solid'       = @(51, { $l = $c.SeriesCollection(1).Format.Line; $l.Visible = -1; $l.ForeColor.RGB = 255; $l.Weight = 2.5 })
+  'line_dash'          = @(4,  { $c.SeriesCollection(1).Format.Line.DashStyle = 4 })
+  'line_round_dot'     = @(4,  { $c.SeriesCollection(1).Format.Line.DashStyle = 3 })
+  'line_long_dash_dot' = @(4,  { $c.SeriesCollection(1).Format.Line.DashStyle = 8 })
+  'line_compound'      = @(4,  { $l = $c.SeriesCollection(1).Format.Line; $l.Weight = 6; $l.Style = 3 })
+  'line_arrow'         = @(4,  { $c.SeriesCollection(1).Format.Line.EndArrowheadStyle = 2 })
+  'line_none'          = @(4,  { $c.SeriesCollection(1).Format.Line.Visible = 0 })
+  'line_transparent'   = @(4,  { $l = $c.SeriesCollection(1).Format.Line; $l.ForeColor.RGB = 255; $l.Transparency = 0.4 })
+  'shadow'             = @(51, { $c.SeriesCollection(1).Format.Shadow.Type = 21 })
+  'glow'               = @(51, { $g = $c.SeriesCollection(1).Format.Glow; $g.Radius = 8; $g.Color.RGB = 255 })
+  'soft_edge'          = @(51, { $c.SeriesCollection(1).Format.SoftEdge.Radius = 5 })
+  'bevel'              = @(51, { $c.SeriesCollection(1).Format.ThreeD.BevelTopType = 3 })
+  'font_title'         = @(51, { $c.HasTitle = $true; $c.ChartTitle.Text = 'T'; $f = $c.ChartTitle.Format.TextFrame2.TextRange.Font; $f.Bold = -1; $f.Italic = -1; $f.Size = 20; $f.Name = 'Arial'; $f.Fill.ForeColor.RGB = 255 })
+  'font_underline'     = @(51, { $c.HasTitle = $true; $c.ChartTitle.Text = 'T'; $c.ChartTitle.Font.Underline = 2 })
+  'font_strike'        = @(51, { $c.HasTitle = $true; $c.ChartTitle.Text = 'T'; $c.ChartTitle.Format.TextFrame2.TextRange.Font.Strike = 1 })
+  'font_axis'          = @(51, { $f = $c.Axes(2).TickLabels.Font; $f.Bold = $true; $f.Size = 12; $f.Color = 255 })
+  'font_legend'        = @(51, { $f = $c.Legend.Font; $f.Italic = $true; $f.Size = 11 })
+  'numfmt_axis'        = @(51, { $c.Axes(2).TickLabels.NumberFormat = '0.0%' })
+  'numfmt_labels'      = @(51, { $s = $c.SeriesCollection(1); $s.HasDataLabels = $true; $s.DataLabels().NumberFormat = '#,##0.00' })
+  'chartarea_fill'     = @(51, { $c.ChartArea.Format.Fill.ForeColor.RGB = 15790320 })
+  'chartarea_border'   = @(51, { $l = $c.ChartArea.Format.Line; $l.Visible = -1; $l.ForeColor.RGB = 255; $l.Weight = 2 })
+  'chartarea_rounded'  = @(51, { $c.ChartArea.RoundedCorners = $true })
+  'plotarea_fill'      = @(51, { $c.PlotArea.Format.Fill.ForeColor.RGB = 15790320 })
+  'legend_fill'        = @(51, { $c.Legend.Format.Fill.ForeColor.RGB = 15790320; $c.Legend.Format.Line.ForeColor.RGB = 0 })
+  'gridline_format'    = @(51, { $l = $c.Axes(2).MajorGridlines.Format.Line; $l.ForeColor.RGB = 255; $l.DashStyle = 4 })
+  'axis_line'          = @(51, { $l = $c.Axes(1).Format.Line; $l.Visible = -1; $l.ForeColor.RGB = 255; $l.Weight = 2 })
+  'point_fill'         = @(51, { $c.SeriesCollection(1).Points(2).Format.Fill.ForeColor.RGB = 65280 })
+  'marker_fill'        = @(4,  { $s = $c.SeriesCollection(1); $s.MarkerStyle = 8; $s.MarkerSize = 9; $s.MarkerBackgroundColor = 255; $s.MarkerForegroundColor = 0 })
+  'labels_fill'        = @(51, { $s = $c.SeriesCollection(1); $s.HasDataLabels = $true; $s.DataLabels().Format.Fill.ForeColor.RGB = 15790320 })
+}
+# Every value of each enumerated format.
+function Add($name, $type, $code) { $formats[$name] = @($type, [scriptblock]::Create($code)) }
+foreach ($i in 1..12) { Add "line_dash_$i" 4 "`$c.SeriesCollection(1).Format.Line.DashStyle = $i" }
+foreach ($i in 1..5) { Add "line_style_$i" 4 "`$l = `$c.SeriesCollection(1).Format.Line; `$l.Weight = 6; `$l.Style = $i" }
+foreach ($i in 2..6) { Add "line_arrow_end_$i" 4 "`$c.SeriesCollection(1).Format.Line.EndArrowheadStyle = $i" }
+foreach ($i in 2..6) { Add "line_arrow_begin_$i" 4 "`$c.SeriesCollection(1).Format.Line.BeginArrowheadStyle = $i" }
+foreach ($i in 2..13) { Add "bevel_$i" 51 "`$c.SeriesCollection(1).Format.ThreeD.BevelTopType = $i" }
+foreach ($i in 1..62) { Add "fill_pattern_$i" 51 "`$c.SeriesCollection(1).Format.Fill.Patterned($i)" }
+foreach ($i in 1..7) { Add "fill_gradient_style_$i" 51 "`$c.SeriesCollection(1).Format.Fill.TwoColorGradient($i, 1)" }
+foreach ($i in 1..16) { Add "fill_theme_$i" 51 "`$f = `$c.SeriesCollection(1).Format.Fill; `$f.Solid(); `$f.ForeColor.ObjectThemeColor = $i; `$f.ForeColor.Brightness = -0.25" }
+foreach ($i in 1..16) { Add "fill_theme_light_$i" 51 "`$f = `$c.SeriesCollection(1).Format.Fill; `$f.Solid(); `$f.ForeColor.ObjectThemeColor = $i; `$f.ForeColor.Brightness = 0.4" }
+foreach ($i in 1..43) { Add "shadow_type_$i" 51 "`$c.SeriesCollection(1).Format.Shadow.Type = $i" }
+foreach ($u in @(-4119, 4, 5)) { Add "font_underline_$([math]::Abs($u))" 51 "`$c.HasTitle = `$true; `$c.ChartTitle.Text = 'T'; `$c.ChartTitle.Font.Underline = $u" }
+Add "font_superscript" 51 "`$c.HasTitle = `$true; `$c.ChartTitle.Text = 'T'; `$c.ChartTitle.Font.Superscript = `$true"
+Add "font_subscript" 51 "`$c.HasTitle = `$true; `$c.ChartTitle.Text = 'T'; `$c.ChartTitle.Font.Subscript = `$true"
+Add "font_spacing" 51 "`$c.HasTitle = `$true; `$c.ChartTitle.Text = 'T'; `$c.ChartTitle.Format.TextFrame2.TextRange.Font.Spacing = 3"
+Add "font_caps" 51 "`$c.HasTitle = `$true; `$c.ChartTitle.Text = 'T'; `$c.ChartTitle.Format.TextFrame2.TextRange.Font.Allcaps = -1"
+foreach ($name in $formats.Keys) {
+  if ($name -notmatch $only) { continue }
+  $type, $act = $formats[$name]
+  try {
+    $wb = $xl.Workbooks.Add(); $ws = $wb.Worksheets.Item(1)
+    $ws.Range("A1:C1").Value2 = @("Cat", "North", "South")
+    for ($r = 2; $r -le 6; $r++) { $ws.Cells.Item($r, 1).Value2 = "Q$($r-1)"; $ws.Cells.Item($r, 2).Value2 = 10 * $r; $ws.Cells.Item($r, 3).Value2 = 7 * $r + 3 }
+    $ws.Range("A1:C6").Select() | Out-Null
+    $c = $ws.Shapes.AddChart2(-1, $type, 200, 10, 400, 300).Chart
+    & $act
+    $wb.SaveAs("$out\$name.xlsx", 51); $wb.Close($false)
+  } catch { "ERR $name $($_.Exception.Message)"; try { $wb.Close($false) } catch {} }
+}
+$xl.Quit()
+"""
+
+FMT_NS = {
+    "http://schemas.openxmlformats.org/drawingml/2006/chart": "c",
+    "http://schemas.openxmlformats.org/drawingml/2006/main": "a",
+}
+FMT_SKIP = {"extLst", "numCache", "strCache", "layout", "printSettings", "clrMapOvr", "userShapes", "axId", "crossAx"}
+FMT_FREE = re.compile(r"-?[0-9.]+|[0-9A-Fa-f]{6}")
+FMT_FREE_ATTRS = {"typeface", "formatCode", "lang", "altLang"}
+# Values Excel writes out that are the schema's defaults.
+FMT_DEFAULTS = {
+    ("a:ln", "algn", "ctr"), ("a:ln", "cmpd", "sng"), ("a:headEnd", "type", "none"),
+    ("a:tailEnd", "type", "none"), ("a:headEnd", "w", "med"), ("a:headEnd", "len", "med"),
+    ("a:tailEnd", "w", "med"), ("a:tailEnd", "len", "med"), ("a:prstDash", "val", "solid"),
+    ("a:gradFill", "flip", "none"), ("a:tileRect", "", ""), ("a:effectLst", "", ""),
+    ("c:invertIfNegative", "val", "0"), ("c:bubble3D", "val", "0"), ("c:showLeaderLines", "val", "0"),
+    ("a:round", "", ""), ("a:headEnd", "", ""), ("a:tailEnd", "", ""),
+}
+
+
+def fmt_items(data):
+    out = set()
+
+    def walk(e, path):
+        ns, _, tag = e.tag[1:].partition("}")
+        if ns not in FMT_NS or tag in FMT_SKIP:
+            return
+        here = f"{path}/{FMT_NS[ns]}:{tag}"
+        attrib = e.attrib
+        if tag == "prstClr" and e.get("val") == "black":
+            # The preset colour black is exactly sRGB 000000.
+            here, attrib = f"{path}/a:srgbClr", {"val": "000000"}
+        elif tag == "scrgbClr" and all(e.get(k) == "0" for k in "rgb"):
+            # Linear-RGB black is exactly sRGB 000000.
+            here, attrib = f"{path}/a:srgbClr", {"val": "000000"}
+        elif tag == "outerShdw" and not any(k in e.attrib for k in ("sx", "sy", "kx", "ky")):
+            # Alignment anchors only scaling and skew; with neither it changes nothing.
+            attrib = {k: v for k, v in e.attrib.items() if k != "algn"}
+        out.add((here, "", ""))
+        for k, v in attrib.items():
+            out.add((here, k, v))
+        if tag in ("spPr", "txPr", "rich"):
+            # DrawingML is one type wherever it sits: match it from its root.
+            here = "@spPr" if tag == "spPr" else "@text"
+        for child in e:
+            walk(child, here)
+
+    walk(ET.fromstring(data), "")
+    return out
+
+
+def fmt_default(p, a, v):
+    last = p.rsplit("/", 1)[-1]
+    if not a and any(d[0] == last for d in FMT_DEFAULTS if d[1]):
+        return True  # the bare element of a default-valued attribute
+    if a in ("charset", "panose", "pitchFamily"):
+        return True  # font metadata Excel looks up, not a choice
+    if last == "a:spAutoFit" or (last == "a:bodyPr" and a):
+        return True  # Excel's default text box settings
+    return (last, a, v) in FMT_DEFAULTS
+
+
+def format_parity(work, gallery_dir):
+    script = os.path.join(work, "formats.ps1")
+    open(script, "w").write(FORMATS_POWERSHELL)
+    run = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, work],
+        capture_output=True, text=True,
+    )
+    # Values Excel itself refuses (patterns past its last, accounting underlines on a title).
+    refused = [line for line in run.stdout.splitlines() if line.startswith("ERR")]
+    print(f"{len(refused)} format values refused by Excel itself")
+
+    gallery = []
+    for f in glob.glob(gallery_dir + "/*.xml"):
+        data = open(f, "rb").read()
+        if b"<c:chartSpace" in data[:400]:
+            gallery.append(fmt_items(data))
+    union = set().union(*gallery)
+    free_keys = {(p, a) for p, a, v in union if a and (a in FMT_FREE_ATTRS or FMT_FREE.fullmatch(v))}
+
+    def chart(path):
+        with zipfile.ZipFile(path) as z:
+            return fmt_items(z.read("xl/charts/chart1.xml"))
+
+    bases = {n: chart(f"{work}/base_{n}.xlsx") for n in ("51", "4", "labels")}
+    matched = missed = 0
+    for f in sorted(glob.glob(work + "/*.xlsx")):
+        name = os.path.basename(f)[:-5]
+        if name.startswith("base_"):
+            continue
+        labels = name.startswith(("numfmt_labels", "labels_"))
+        base = bases["labels" if labels else "4" if name.startswith(("line_", "marker_")) else "51"]
+        mine = chart(f)
+        # Excel writes a series' label settings on the series; chart-wide ones match them.
+        added = {
+            (p.replace("/c:ser/c:dLbls", "/c:dLbls") if labels else p, a, v)
+            for p, a, v in mine - base
+            if labels or "/c:ser/c:dLbls" not in p
+        }
+        lacking = sorted(
+            (p, a, v) for p, a, v in added - union
+            if not fmt_default(p, a, v)
+            and not (a and (a in FMT_FREE_ATTRS or FMT_FREE.fullmatch(v)) and (p, a) in free_keys)
+        )
+        if lacking:
+            missed += 1
+            print("MISS", name, "| needs", lacking[:6])
+        else:
+            matched += 1
+    print(f"{matched} of {matched + missed} Excel formats matched by the gallery")
+    return missed == 0 and matched >= 200
+
 
 def main():
     if len(sys.argv) != 2:
@@ -260,8 +461,11 @@ def main():
     elements_ok = element_parity(work, sys.argv[1])
     for f in os.listdir(work):
         os.remove(os.path.join(work, f))
+    formats_ok = format_parity(work, sys.argv[1])
+    for f in os.listdir(work):
+        os.remove(os.path.join(work, f))
     os.rmdir(work)
-    sys.exit(1 if missing or len(excel) < 81 or not elements_ok else 0)
+    sys.exit(1 if missing or len(excel) < 81 or not elements_ok or not formats_ok else 0)
 
 
 if __name__ == "__main__":

@@ -12,11 +12,11 @@
 use crate::error::ChartError;
 use crate::reference;
 use crate::spec::{
-    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, DataLabelPosition, DataLabels, DataTable,
-    DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars, ErrorValues,
-    LabelField, LabelPart, Layout, MarkerSymbol, OfPie, OfPieSplit, Paint, Plot, PointFormat,
-    PointLabel, Position, Series, SeriesName, Shadow, TextStyle, TickLabels, TitleRun, Trendline,
-    TrendlineKind, View3D,
+    AreaStyle, Axis, ChartKind, ChartPart, ChartSpec, Dash, DataLabelPosition, DataLabels,
+    DataTable, DateUnit, DisplayUnit, Effects, ErrorAmount, ErrorAxis, ErrorBarSide, ErrorBars,
+    ErrorValues, GradientShape, LabelField, LabelPart, Layout, MarkerSymbol, OfPie, OfPieSplit,
+    Paint, Plot, PointFormat, PointLabel, Position, Series, SeriesName, Shadow, TextStyle,
+    TickLabels, TitleRun, Trendline, TrendlineKind, View3D,
 };
 use crate::xml::{escape, escape_into};
 
@@ -470,6 +470,9 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     {
         check_text_style(style)?;
     }
+    if let Some(area) = spec.data_labels.as_ref().and_then(|l| l.area.as_ref()) {
+        check_area_style(area)?;
+    }
     if let Some(style) = spec.data_labels.as_ref().and_then(|l| l.style.as_ref()) {
         check_text_style(style)?;
     }
@@ -852,6 +855,20 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
     if let Some(points) = series.line_width_pt {
         check_line_width(points)?;
     }
+    if (series.dash.is_some()
+        || series.compound.is_some()
+        || series.cap.is_some()
+        || series.arrows != (None, None))
+        && (!matches!(
+            plot.family,
+            Family::Line | Family::Radar { filled: false } | Family::Scatter
+        ) || plot.kind == ChartKind::Scatter)
+    {
+        return unsupported(format!(
+            "a dashed, compound, capped or arrowed series line on {:?}",
+            plot.kind
+        ));
+    }
     if let Some(effects) = &series.effects {
         // These draw no fill or line for an effect to hang on.
         if plot.family == Family::Scatter && plot.kind == ChartKind::Scatter
@@ -1114,6 +1131,22 @@ fn check_title_runs(text: Option<&String>, runs: Option<&Vec<TitleRun>>) -> Resu
 }
 
 pub(crate) fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
+    if let Some(points) = style.spacing_pt {
+        let hundredths = if points.is_finite() {
+            (points * 100.0).round() as i64
+        } else {
+            i64::MAX
+        };
+        check_range(
+            "character spacing in hundredths of a point",
+            hundredths,
+            -400_000,
+            400_000,
+        )?;
+    }
+    if let Some(percent) = style.baseline_pct {
+        check_range("baseline percent", i64::from(percent), -100, 100)?;
+    }
     if let Some(size) = style.size_pt {
         // Hundredths of a point in the file; a NaN size becomes -1.
         let hundredths = if size.is_finite() {
@@ -1176,6 +1209,9 @@ fn check_paint(paint: &Paint) -> Result<(), ChartError> {
             if !(2..=10).contains(&gradient.stops.len()) {
                 return invalid("a gradient needs two to ten stops");
             }
+            if gradient.corner.is_some() && gradient.shape == GradientShape::Linear {
+                return invalid("a linear gradient has no corner");
+            }
             if gradient.angle > 359 {
                 return invalid("a gradient angle is from 0 to 359 degrees");
             }
@@ -1196,6 +1232,20 @@ fn check_paint(paint: &Paint) -> Result<(), ChartError> {
         Paint::Pattern(pattern) => {
             check_color(&pattern.foreground)?;
             check_color(&pattern.background)?;
+        }
+        Paint::Solid(color) => {
+            if let crate::spec::ColorBase::Rgb(rgb) = &color.base {
+                check_color(rgb)?;
+            }
+            if [color.lum_mod, color.lum_off, color.transparency]
+                .into_iter()
+                .flatten()
+                .any(|percent| percent > 100)
+            {
+                return Err(ChartError::InvalidFill {
+                    reason: "a colour's brightness and transparency are from 0 to 100 percent",
+                });
+            }
         }
         Paint::Picture(picture) => {
             // An `xsd:ID`: a letter or underscore, then letters, digits, `_`, `-`, `.`.
@@ -1235,6 +1285,34 @@ fn check_effects(effects: &Effects) -> Result<(), ChartError> {
     {
         check_color(&shadow.color)?;
         finite_emu("shadow blur in EMU", shadow.blur_pt, 100)?;
+        finite_emu("shadow distance in EMU", shadow.distance_pt, 200)?;
+        check_range("shadow angle", i64::from(shadow.angle), 0, 359)?;
+        check_range("shadow opacity", i64::from(shadow.opacity), 0, 100)?;
+    }
+    if let Some(inner) = &effects.inner_shadow {
+        if inner.scale.is_some() || inner.skew.is_some() || inner.align.is_some() {
+            return unsupported("scale, skew or alignment on an inner shadow".to_string());
+        }
+    }
+    for shadow in [&effects.shadow, &effects.inner_shadow]
+        .into_iter()
+        .flatten()
+    {
+        if let Some((x, y)) = shadow.scale {
+            check_range("shadow scale", i64::from(x), -200, 200)?;
+            check_range("shadow scale", i64::from(y), -200, 200)?;
+        }
+        if let Some((x, y)) = shadow.skew {
+            for degrees in [x, y] {
+                if !(degrees.is_finite() && degrees.abs() < 90.0) {
+                    return unsupported("a shadow skew outside -89 to 89 degrees".to_string());
+                }
+            }
+        }
+    }
+    if let Some((preset, shadow)) = &effects.preset_shadow {
+        check_range("preset shadow", i64::from(*preset), 1, 20)?;
+        check_color(&shadow.color)?;
         finite_emu("shadow distance in EMU", shadow.distance_pt, 200)?;
         check_range("shadow angle", i64::from(shadow.angle), 0, 359)?;
         check_range("shadow opacity", i64::from(shadow.opacity), 0, 100)?;
@@ -1374,6 +1452,12 @@ fn check_axis(axis: &Axis) -> Result<(), ChartError> {
     }
     if let Some(points) = axis.line_width_pt {
         check_line_width(points)?;
+    }
+    if let Some(style) = &axis.gridline_style {
+        if !axis.major_gridlines {
+            return unsupported("a gridline style without gridlines".to_string());
+        }
+        check_area_style(style)?;
     }
     for style in [&axis.title_style, &axis.label_style].into_iter().flatten() {
         check_text_style(style)?;
@@ -1888,8 +1972,9 @@ fn label_group_xml(labels: &DataLabels) -> String {
         .position
         .map(|position| format!(r#"<c:dLblPos val="{}"/>"#, position.code()))
         .unwrap_or_default();
+    let area = labels.area.as_ref().map(sp_pr_xml).unwrap_or_default();
     format!(
-        r#"{number_format}{tx_pr}{position}{}"#,
+        r#"{number_format}{area}{tx_pr}{position}{}"#,
         label_flags_xml(labels)
     )
 }
@@ -2206,9 +2291,30 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             let line = if plot.kind == ChartKind::Scatter {
                 // Markers only: the connecting line is switched off.
                 Some(format!("<a:ln{width}><a:noFill/></a:ln>"))
-            } else if color.is_some() || !width.is_empty() {
+            } else if color.is_some()
+                || !width.is_empty()
+                || series.dash.is_some()
+                || series.compound.is_some()
+                || series.arrows != (None, None)
+                || series.cap.is_some()
+            {
                 let fill = color.map(solid).unwrap_or_default();
-                Some(format!(r#"<a:ln{width} cap="rnd">{fill}<a:round/></a:ln>"#))
+                let dash = dash_xml(series.dash);
+                let compound = series
+                    .compound
+                    .map(|compound| format!(r#" cmpd="{}""#, compound.code()))
+                    .unwrap_or_default();
+                let end = |tag: &str, arrow: Option<crate::spec::Arrow>| {
+                    arrow
+                        .map(|arrow| format!(r#"<a:{tag} type="{}"/>"#, arrow.code()))
+                        .unwrap_or_default()
+                };
+                let cap = series.cap.map_or("rnd", |cap| cap.code());
+                let head = end("headEnd", series.arrows.0);
+                let tail = end("tailEnd", series.arrows.1);
+                Some(format!(
+                    r#"<a:ln{width}{compound} cap="{cap}">{fill}{dash}<a:round/>{head}{tail}</a:ln>"#
+                ))
             } else {
                 None
             };
@@ -2412,9 +2518,10 @@ fn trendline_xml(trendline: &Trendline) -> String {
         .map(|text| format!("<c:name>{}</c:name>", escape(text)))
         .unwrap_or_default();
     let width = line_width_attr(trendline.width_pt);
-    let sp_pr = if trendline.color.is_some() || !width.is_empty() {
+    let sp_pr = if trendline.color.is_some() || !width.is_empty() || trendline.dash.is_some() {
         let fill = trendline.color.as_deref().map(solid).unwrap_or_default();
-        format!(r#"<c:spPr><a:ln{width} cap="rnd">{fill}</a:ln></c:spPr>"#)
+        let dash = dash_xml(trendline.dash);
+        format!(r#"<c:spPr><a:ln{width} cap="rnd">{fill}{dash}</a:ln></c:spPr>"#)
     } else {
         String::new()
     };
@@ -2495,6 +2602,25 @@ fn run_props(tag: &str, extra_attrs: &str, style: &TextStyle) -> String {
     if let Some(italic) = style.italic {
         attrs.push_str(&format!(r#" i="{}""#, i32::from(italic)));
     }
+    if let Some(underline) = style.underline {
+        attrs.push_str(&format!(r#" u="{}""#, underline.code()));
+    }
+    if let Some(caps) = style.caps {
+        attrs.push_str(&format!(r#" cap="{}""#, caps.code()));
+    }
+    if let Some(points) = style.spacing_pt {
+        attrs.push_str(&format!(r#" spc="{}""#, (points * 100.0).round() as i64));
+    }
+    if let Some(percent) = style.baseline_pct {
+        attrs.push_str(&format!(r#" baseline="{}""#, i32::from(percent) * 1000));
+    }
+    if let Some(strike) = style.strike {
+        attrs.push_str(if strike {
+            r#" strike="sngStrike""#
+        } else {
+            r#" strike="noStrike""#
+        });
+    }
     let fill = style.color.as_deref().map(solid).unwrap_or_default();
     let font = style
         .font
@@ -2546,9 +2672,42 @@ fn fill_xml(paint: &Paint) -> String {
                     )
                 })
                 .collect();
+            let spread = match gradient.shape {
+                GradientShape::Linear => format!(
+                    r#"<a:lin ang="{}" scaled="0"/>"#,
+                    u32::from(gradient.angle) * 60_000
+                ),
+                shape => {
+                    use crate::spec::Corner;
+                    // The focus rectangle, and the tile pulled back so the
+                    // blend still covers the shape, as Excel writes them.
+                    let (focus, tile) = match gradient.corner {
+                        None => (r#"l="50000" t="50000" r="50000" b="50000""#, ""),
+                        Some(Corner::TopLeft) => (
+                            r#"r="100000" b="100000""#,
+                            r#"<a:tileRect l="-100000" t="-100000"/>"#,
+                        ),
+                        Some(Corner::TopRight) => (
+                            r#"l="100000" b="100000""#,
+                            r#"<a:tileRect r="-100000" t="-100000"/>"#,
+                        ),
+                        Some(Corner::BottomLeft) => (
+                            r#"t="100000" r="100000""#,
+                            r#"<a:tileRect l="-100000" b="-100000"/>"#,
+                        ),
+                        Some(Corner::BottomRight) => (
+                            r#"l="100000" t="100000""#,
+                            r#"<a:tileRect r="-100000" b="-100000"/>"#,
+                        ),
+                    };
+                    format!(
+                        r#"<a:path path="{}"><a:fillToRect {focus}/></a:path>{tile}"#,
+                        shape.code()
+                    )
+                }
+            };
             format!(
-                r#"<a:gradFill rotWithShape="1"><a:gsLst>{stops}</a:gsLst><a:lin ang="{}" scaled="0"/></a:gradFill>"#,
-                u32::from(gradient.angle) * 60_000
+                r#"<a:gradFill rotWithShape="1"><a:gsLst>{stops}</a:gsLst>{spread}</a:gradFill>"#
             )
         }
         Paint::Picture(picture) => {
@@ -2562,6 +2721,7 @@ fn fill_xml(paint: &Paint) -> String {
                 escape(&picture.relationship_id)
             )
         }
+        Paint::Solid(color) => format!("<a:solidFill>{}</a:solidFill>", color_xml(color)),
         Paint::Pattern(pattern) => format!(
             r#"<a:pattFill prst="{}"><a:fgClr>{}</a:fgClr><a:bgClr>{}</a:bgClr></a:pattFill>"#,
             pattern.kind.code(),
@@ -2587,9 +2747,33 @@ fn effects_xml(effects: Option<&Effects>) -> String {
     let shadow = |tag: &str, shadow: &Shadow| {
         // Only the outer shadow takes an alignment and rotation.
         let extra = if tag == "outerShdw" {
-            r#" algn="ctr" rotWithShape="0""#
+            let mut extra = String::new();
+            // Excel leaves out the defaults: 100% scale, no skew, bottom alignment.
+            let (sx, sy) = shadow.scale.unwrap_or((100, 100));
+            let (kx, ky) = shadow.skew.unwrap_or((0.0, 0.0));
+            let angle = |degrees: f64| (degrees * 60_000.0).round() as i64;
+            for (name, value) in [
+                ("sx", i64::from(sx) * 1000 - 100_000),
+                ("sy", i64::from(sy) * 1000 - 100_000),
+            ] {
+                if value != 0 {
+                    extra.push_str(&format!(r#" {name}="{}""#, value + 100_000));
+                }
+            }
+            for (name, value) in [("kx", angle(kx)), ("ky", angle(ky))] {
+                if value != 0 {
+                    extra.push_str(&format!(r#" {name}="{value}""#));
+                }
+            }
+            let align = match shadow.align {
+                Some(crate::spec::ShadowAlign::Bottom) => String::new(),
+                Some(align) => format!(r#" algn="{}""#, align.code()),
+                None => r#" algn="ctr""#.to_string(),
+            };
+            extra.push_str(&format!(r#"{align} rotWithShape="0""#));
+            extra
         } else {
-            ""
+            String::new()
         };
         format!(
             r#"<a:{tag} blurRad="{}" dist="{}" dir="{}"{extra}>{}</a:{tag}>"#,
@@ -2620,15 +2804,42 @@ fn effects_xml(effects: Option<&Effects>) -> String {
         .as_ref()
         .map(|item| shadow("outerShdw", item))
         .unwrap_or_default();
+    let preset = effects
+        .preset_shadow
+        .as_ref()
+        .map(|(preset, shadow)| {
+            format!(
+                r#"<a:prstShdw prst="shdw{preset}" dist="{}" dir="{}">{}</a:prstShdw>"#,
+                line_emu(shadow.distance_pt),
+                u32::from(shadow.angle) * 60_000,
+                color(&shadow.color, shadow.opacity)
+            )
+        })
+        .unwrap_or_default();
     let soft = effects
         .soft_edge_pt
         .map(|points| format!(r#"<a:softEdge rad="{}"/>"#, line_emu(points)))
         .unwrap_or_default();
-    let inside = format!("{glow}{inner}{outer}{soft}");
+    let inside = format!("{glow}{inner}{outer}{preset}{soft}");
+    // The bevel comes after the effect list, in the schema's order.
+    let bevel = effects
+        .bevel
+        .map(|bevel| {
+            format!(
+                r#"<a:scene3d><a:camera prst="orthographicFront"/><a:lightRig rig="threePt" dir="t"/></a:scene3d><a:sp3d><a:bevelT{}/></a:sp3d>"#,
+                // Circle is the default shape; Excel writes it bare.
+                if bevel == crate::spec::Bevel::Circle {
+                    String::new()
+                } else {
+                    format!(r#" prst="{}""#, bevel.code())
+                }
+            )
+        })
+        .unwrap_or_default();
     if inside.is_empty() {
-        String::new()
+        bevel
     } else {
-        format!("<a:effectLst>{inside}</a:effectLst>")
+        format!("<a:effectLst>{inside}</a:effectLst>{bevel}")
     }
 }
 
@@ -2642,11 +2853,45 @@ fn series_sp_pr(inner: &str, effects: Option<&Effects>) -> String {
     }
 }
 
+/// A colour element with its brightness and transparency.
+fn color_xml(color: &crate::spec::Color) -> String {
+    use crate::spec::ColorBase;
+    let (tag, attrs) = match &color.base {
+        ColorBase::Rgb(rgb) => ("srgbClr", format!(r#" val="{}""#, rgb.to_ascii_uppercase())),
+        ColorBase::Theme(slot) => ("schemeClr", format!(r#" val="{}""#, slot.code())),
+        ColorBase::System(system) => (
+            "sysClr",
+            format!(r#" val="{}" lastClr="{}""#, system.code(), system.last()),
+        ),
+    };
+    let percent = |tag: &str, value: Option<u8>| {
+        value
+            .map(|value| format!(r#"<a:{tag} val="{}"/>"#, u32::from(value) * 1000))
+            .unwrap_or_default()
+    };
+    let inside = percent("lumMod", color.lum_mod)
+        + &percent("lumOff", color.lum_off)
+        + &percent("alpha", color.transparency.map(|t| 100 - t));
+    if inside.is_empty() {
+        format!("<a:{tag}{attrs}/>")
+    } else {
+        format!("<a:{tag}{attrs}>{inside}</a:{tag}>")
+    }
+}
+
+/// `<a:prstDash>` for a dash pattern, or nothing.
+fn dash_xml(dash: Option<Dash>) -> String {
+    dash.map(|dash| format!(r#"<a:prstDash val="{}"/>"#, dash.code()))
+        .unwrap_or_default()
+}
+
 pub(crate) fn sp_pr_xml(style: &AreaStyle) -> String {
     let fill = style.fill.as_ref().map(fill_xml).unwrap_or_default();
     let width = line_width_attr(style.border_width_pt);
+    let dash = dash_xml(style.border_dash);
     let line = match &style.border {
-        Some(paint) => format!("<a:ln{width}>{}</a:ln>", fill_xml(paint)),
+        Some(paint) => format!("<a:ln{width}>{}{dash}</a:ln>", fill_xml(paint)),
+        None if !dash.is_empty() => format!("<a:ln{width}>{dash}</a:ln>"),
         None if !width.is_empty() => format!("<a:ln{width}/>"),
         None => String::new(),
     };
@@ -2855,10 +3100,17 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
         Default::default()
     };
     let orientation = if axis.reversed { "maxMin" } else { "minMax" };
-    let gridlines = if axis.major_gridlines {
-        "<c:majorGridlines/>"
-    } else {
-        ""
+    let gridlines = match (&axis.gridline_style, axis.major_gridlines) {
+        (Some(style), true) => format!(
+            "<c:majorGridlines>{}</c:majorGridlines>",
+            sp_pr_xml(&AreaStyle {
+                fill: None,
+                effects: None,
+                ..style.clone()
+            })
+        ),
+        (None, true) => "<c:majorGridlines/>".to_string(),
+        (_, false) => String::new(),
     };
     let minor_gridlines = if axis.minor_gridlines {
         "<c:minorGridlines/>"
@@ -2899,10 +3151,11 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
     } else {
         format!(r#"<c:tickLblPos val="{}"/>"#, axis.tick_labels.code())
     };
-    let line = if axis.line.is_some() || axis.line_width_pt.is_some() {
+    let line = if axis.line.is_some() || axis.line_width_pt.is_some() || axis.line_dash.is_some() {
         sp_pr_xml(&AreaStyle {
             border: axis.line.clone(),
             border_width_pt: axis.line_width_pt,
+            border_dash: axis.line_dash,
             ..AreaStyle::default()
         })
     } else {
