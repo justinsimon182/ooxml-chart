@@ -258,3 +258,46 @@ fn binning_connector_and_axis_options_on_other_kinds_are_refused() {
         );
     }
 }
+
+#[test]
+fn series_points_chart_area_and_text_are_styled() {
+    use ooxml_chart::{AreaStyle, ChartExSeries, TextStyle};
+    let xml = render(
+        ChartEx::new(ChartExKind::BoxWhisker, VALUES)
+            .style(AreaStyle::new().fill("8E0DD1"))
+            .add_series(ChartExSeries::new(VALUES).style(AreaStyle::new().fill("0090b2")))
+            .chart_area(AreaStyle::new().fill("F8F6F0"))
+            .text_style(TextStyle::new().size(9.0)),
+    );
+    assert!(xml.contains(r#"<cx:spPr><a:solidFill><a:srgbClr val="8E0DD1"/></a:solidFill></cx:spPr><cx:dataId val="0"/>"#), "{xml}");
+    assert!(xml.contains(r#"<cx:spPr><a:solidFill><a:srgbClr val="0090B2"/></a:solidFill></cx:spPr><cx:dataId val="1"/>"#));
+    assert!(xml.contains(r#"</cx:chart><cx:spPr><a:solidFill><a:srgbClr val="F8F6F0"/></a:solidFill></cx:spPr><cx:txPr>"#));
+    assert!(xml.ends_with("</cx:txPr></cx:chartSpace>"), "{xml}");
+    assert!(!xml.contains("<c:"), "{xml}");
+
+    let treemap = render(
+        ChartEx::new(ChartExKind::Treemap, VALUES)
+            .categories(CATS)
+            .point(2, AreaStyle::new().fill("28EAE4")),
+    );
+    assert!(treemap.contains(r#"<cx:dataPt idx="2"><cx:spPr><a:solidFill><a:srgbClr val="28EAE4"/></a:solidFill></cx:spPr></cx:dataPt><cx:dataLabels"#), "{treemap}");
+}
+
+#[test]
+fn bad_styles_on_a_chart_ex_are_refused() {
+    use ooxml_chart::{AreaStyle, PictureFill};
+    assert!(matches!(
+        ChartEx::new(ChartExKind::Histogram, VALUES)
+            .style(AreaStyle::new().fill("purple"))
+            .render(),
+        Err(ChartError::InvalidColor(_))
+    ));
+    let picture =
+        AreaStyle::new().fill_paint(ooxml_chart::Paint::Picture(PictureFill::new("rId9")));
+    assert!(matches!(
+        ChartEx::new(ChartExKind::Histogram, VALUES)
+            .chart_area(picture)
+            .render(),
+        Err(ChartError::Unsupported { .. })
+    ));
+}
