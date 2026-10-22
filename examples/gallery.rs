@@ -844,6 +844,55 @@ fn run() {
         let part = chart.render().expect("a chartEx part");
         fs::write(dir.join(format!("{file}.xml")), part).expect("write chartEx");
     }
+    // Every element each chartEx kind draws, with its own fill and border.
+    for (file, kind) in [
+        ("cx_styled_waterfall", K::Waterfall),
+        ("cx_styled_funnel", K::Funnel),
+        ("cx_styled_histogram", K::Histogram),
+        ("cx_styled_pareto", K::Pareto),
+        ("cx_styled_box_whisker", K::BoxWhisker),
+        ("cx_styled_treemap", K::Treemap),
+        ("cx_styled_sunburst", K::Sunburst),
+    ] {
+        use ooxml_chart::ChartExElement as E;
+        let mut chart = ChartEx::new(kind, vals)
+            .categories(cats)
+            .title("Styled")
+            .category_axis_title("Category")
+            .value_axis_title("Value")
+            .data_labels(true)
+            .legend(true);
+        if chart.render().is_err() {
+            // Kinds without axes refuse the axis titles.
+            chart = ChartEx::new(kind, vals)
+                .categories(cats)
+                .title("Styled")
+                .data_labels(true)
+                .legend(true);
+        }
+        let style = AreaStyle::new()
+            .fill("F0F0F0")
+            .border("8E0DD1")
+            .border_width(1.0);
+        for element in [
+            E::PlotArea,
+            E::Title,
+            E::Legend,
+            E::DataLabels,
+            E::CategoryAxis,
+            E::ValueAxis,
+            E::CategoryAxisTitle,
+            E::ValueAxisTitle,
+            E::Gridlines,
+        ] {
+            let styled = chart.clone().element_style(element, style.clone());
+            if styled.render().is_ok() {
+                chart = styled;
+            }
+        }
+        let part = chart.render().expect("a styled chartEx part");
+        fs::write(dir.join(format!("{file}.xml")), part).expect("write chartEx");
+    }
     let part = ooxml_chart::drawing_part_with(&[(
         ooxml_chart::Anchor::two_cell(two),
         frame().for_chart_ex(K::Waterfall),

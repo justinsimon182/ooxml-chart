@@ -23,6 +23,12 @@ font names are free when the gallery has that attribute; defaults Excel spells
 out, and exact equivalents (preset black for sRGB 000000, the alignment of an
 unscaled shadow) are not differences.
 
+The same is done for the chartEx kinds (all but the region map): Excel formats
+each element (series, point, chart and plot area, title, legend, labels, axes,
+gridlines, axis titles), and each element's shape properties must appear in
+some gallery part. Their content is matched from the `spPr` root against every
+gallery part, as both chart forms share one writer.
+
     cargo run --example gallery -- out
     python scripts/excel_parity.py out
 """
@@ -428,6 +434,112 @@ def format_parity(work, gallery_dir):
     return missed == 0 and matched >= 200
 
 
+CHART_EX_FORMATS_POWERSHELL = r"""param($out, $only = '.')
+$xl = New-Object -ComObject Excel.Application
+$xl.DisplayAlerts = $false
+# chartEx kinds: 117 treemap, 118 histogram, 119 waterfall, 120 sunburst, 121 box and whisker, 122 pareto, 123 funnel.
+$types = @{ treemap = 117; histogram = 118; waterfall = 119; sunburst = 120; boxwhisker = 121; pareto = 122; funnel = 123 }
+$formats = [ordered]@{
+  'base'            = { }
+  'series_fill'     = { $s = $c.FullSeriesCollection(1); $s.Format.Fill.ForeColor.RGB = 255; $s.Format.Line.ForeColor.RGB = 65280 }
+  'point_fill'      = { $c.FullSeriesCollection(1).Points(2).Format.Fill.ForeColor.RGB = 255 }
+  'chartarea_fill'  = { $c.ChartArea.Format.Fill.ForeColor.RGB = 15790320; $c.ChartArea.Format.Line.ForeColor.RGB = 0 }
+  'plotarea_fill'   = { $c.PlotArea.Format.Fill.ForeColor.RGB = 15790320 }
+  'title_text'      = { $c.HasTitle = $true; $c.ChartTitle.Text = 'T'; $f = $c.ChartTitle.Format.TextFrame2.TextRange.Font; $f.Bold = -1; $f.Size = 18; $f.Fill.ForeColor.RGB = 255 }
+  'title_fill'      = { $c.HasTitle = $true; $c.ChartTitle.Text = 'T'; $c.ChartTitle.Format.Fill.ForeColor.RGB = 15790320 }
+  'legend_fill'     = { $c.HasLegend = $true; $c.Legend.Format.Fill.ForeColor.RGB = 15790320; $c.Legend.Format.TextFrame2.TextRange.Font.Italic = -1 }
+  'labels_format'   = { $s = $c.FullSeriesCollection(1); $s.HasDataLabels = $true; $d = $s.DataLabels(); $d.Format.Fill.ForeColor.RGB = 15790320; $d.Format.TextFrame2.TextRange.Font.Bold = -1 }
+  'axis_line'       = { $l = $c.Axes(2).Format.Line; $l.Visible = -1; $l.ForeColor.RGB = 255; $l.Weight = 2 }
+  'axis_text'       = { $f = $c.Axes(1).TickLabels.Font; $f.Bold = $true; $f.Color = 255 }
+  'gridlines'       = { $l = $c.Axes(2).MajorGridlines.Format.Line; $l.ForeColor.RGB = 255; $l.DashStyle = 4 }
+  'axis_title'      = { $a = $c.Axes(2); $a.HasTitle = $true; $a.AxisTitle.Text = 'V'; $a.AxisTitle.Format.TextFrame2.TextRange.Font.Bold = -1; $a.AxisTitle.Format.Fill.ForeColor.RGB = 15790320 }
+}
+foreach ($t in $types.Keys) {
+  foreach ($name in $formats.Keys) {
+    if ("$t`_$name" -notmatch $only) { continue }
+    try {
+      $wb = $xl.Workbooks.Add(); $ws = $wb.Worksheets.Item(1)
+      $ws.Range("A1:B1").Value2 = @("Cat", "North")
+      for ($r = 2; $r -le 6; $r++) { $ws.Cells.Item($r, 1).Value2 = "Q$($r-1)"; $ws.Cells.Item($r, 2).Value2 = 10 * $r - 25 }
+      $ws.Range("A1:B6").Select() | Out-Null
+      $c = $ws.Shapes.AddChart2(-1, $types[$t], 200, 10, 400, 300).Chart
+      & $formats[$name]
+      $wb.SaveAs("$out\$t`_$name.xlsx", 51); $wb.Close($false)
+    } catch { "ERR $t`_$name $($_.Exception.Message)"; try { $wb.Close($false) } catch {} }
+  }
+}
+$xl.Quit()
+"""
+
+
+def cx_items(data):
+    out = set()
+    names = dict(FMT_NS)
+    names["http://schemas.microsoft.com/office/drawing/2014/chartex"] = "cx"
+    skip = {"extLst", "numDim", "strDim", "data", "printSettings", "clrMapOvr", "layoutPr", "numFmt", "numCache", "strCache", "layout", "axId", "crossAx"}
+
+    def walk(e, path):
+        ns, _, tag = e.tag[1:].partition("}")
+        if ns not in names or tag in skip:
+            return
+        here = f"{path}/{names[ns]}:{tag}"
+        out.add((here, "", ""))
+        for k, v in e.attrib.items():
+            if k != "uniqueId":  # random on each save
+                out.add((here, k, v))
+        if tag in ("spPr", "txPr", "rich"):
+            here = "@spPr" if tag == "spPr" else "@text"
+        for child in e:
+            walk(child, here)
+
+    walk(ET.fromstring(data), "")
+    return out
+
+
+def chart_ex_format_parity(work, gallery_dir):
+    script = os.path.join(work, "cx_formats.ps1")
+    open(script, "w").write(CHART_EX_FORMATS_POWERSHELL)
+    run = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, work],
+        capture_output=True, text=True,
+    )
+    # Elements Excel has no object for on a kind (axes on a treemap, say).
+    refused = [line for line in run.stdout.splitlines() if line.startswith("ERR")]
+    print(f"{len(refused)} chartEx formats refused by Excel itself")
+
+    gallery = []
+    for f in glob.glob(gallery_dir + "/*.xml"):
+        data = open(f, "rb").read()
+        if b"<cx:chartSpace" in data[:600] or b"<c:chartSpace" in data[:400]:
+            gallery.append(cx_items(data))
+    union = set().union(*gallery)
+    free_keys = {(p, a) for p, a, v in union if a and (a in FMT_FREE_ATTRS or FMT_FREE.fullmatch(v))}
+
+    def chart(path):
+        with zipfile.ZipFile(path) as z:
+            name = next(n for n in z.namelist() if n.startswith("xl/charts/chartEx") and n.endswith(".xml"))
+            return cx_items(z.read(name))
+
+    matched = missed = 0
+    for f in sorted(glob.glob(work + "/*.xlsx")):
+        name = os.path.basename(f)[:-5]
+        kind, _, fmt = name.partition("_")
+        if fmt == "base":
+            continue
+        lacking = sorted(
+            (p, a, v) for p, a, v in chart(f) - chart(f"{work}/{kind}_base.xlsx") - union
+            if not fmt_default(p, a, v)
+            and not (a and (a in FMT_FREE_ATTRS or FMT_FREE.fullmatch(v)) and (p, a) in free_keys)
+        )
+        if lacking:
+            missed += 1
+            print("MISS", name, "| needs", lacking[:6])
+        else:
+            matched += 1
+    print(f"{matched} of {matched + missed} Excel chartEx formats matched by the gallery")
+    return missed == 0 and matched >= 60
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: excel_parity.py <gallery dir>")
@@ -464,8 +576,11 @@ def main():
     formats_ok = format_parity(work, sys.argv[1])
     for f in os.listdir(work):
         os.remove(os.path.join(work, f))
+    chart_ex_ok = chart_ex_format_parity(work, sys.argv[1])
+    for f in os.listdir(work):
+        os.remove(os.path.join(work, f))
     os.rmdir(work)
-    sys.exit(1 if missing or len(excel) < 81 or not elements_ok or not formats_ok else 0)
+    sys.exit(1 if missing or len(excel) < 81 or not elements_ok or not formats_ok or not chart_ex_ok else 0)
 
 
 if __name__ == "__main__":
