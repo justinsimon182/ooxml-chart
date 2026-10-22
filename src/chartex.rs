@@ -327,6 +327,37 @@ pub struct ChartEx {
     /// The font of every text on the chart.
     #[cfg_attr(feature = "serde", serde(default))]
     pub text_style: Option<TextStyle>,
+    /// Fill, border and effects of single chart elements; see
+    /// [`ChartExElement`].
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub element_styles: Vec<(ChartExElement, AreaStyle)>,
+}
+
+/// A part of a chartEx chart that takes its own fill, border and effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ChartExElement {
+    /// The plot area behind the data.
+    PlotArea,
+    /// The chart title's box. Needs a title.
+    Title,
+    /// The legend's box. Needs a legend.
+    Legend,
+    /// The data labels' boxes. Needs data labels.
+    DataLabels,
+    /// The category axis line. Waterfall, funnel, histogram, Pareto and box
+    /// and whisker.
+    CategoryAxis,
+    /// The value axis line. Waterfall, histogram, Pareto and box and whisker.
+    ValueAxis,
+    /// The category axis title's box. Needs that title.
+    CategoryAxisTitle,
+    /// The value axis title's box. Needs that title.
+    ValueAxisTitle,
+    /// The value axis's major gridlines, from the style's border.
+    Gridlines,
 }
 
 impl ChartEx {
@@ -355,6 +386,7 @@ impl ChartEx {
             points: Vec::new(),
             chart_area: None,
             text_style: None,
+            element_styles: Vec::new(),
         }
     }
 
@@ -434,6 +466,24 @@ impl ChartEx {
     pub fn text_style(mut self, style: TextStyle) -> Self {
         self.text_style = Some(style);
         self
+    }
+
+    /// Sets one element's fill, border and effects, replacing any style it
+    /// had. An element the chart does not draw is refused at render time.
+    #[must_use]
+    pub fn element_style(mut self, element: ChartExElement, style: AreaStyle) -> Self {
+        self.element_styles.retain(|(had, _)| *had != element);
+        self.element_styles.push((element, style));
+        self
+    }
+
+    /// The `cx:spPr` for `element`, or nothing.
+    fn element_sp_pr(&self, element: ChartExElement) -> String {
+        self.element_styles
+            .iter()
+            .find(|(had, _)| *had == element)
+            .map(|(_, style)| cx_sp_pr(style))
+            .unwrap_or_default()
     }
 
     /// Titles the category axis.
@@ -527,7 +577,8 @@ impl ChartEx {
             .filter_map(|s| s.style.as_ref())
             .chain(self.style.iter())
             .chain(self.points.iter().map(|(_, style)| style))
-            .chain(self.chart_area.iter());
+            .chain(self.chart_area.iter())
+            .chain(self.element_styles.iter().map(|(_, style)| style));
         for style in styles {
             // shortcut: picture fills are unverified in a chartEx part; allow
             // them once Excel has been shown to load one.
@@ -538,6 +589,39 @@ impl ChartEx {
         }
         if let Some(style) = &self.text_style {
             check_text_style(style)?;
+        }
+        for (element, _) in &self.element_styles {
+            let kind = self.kind;
+            let axes = matches!(
+                kind,
+                ChartExKind::Waterfall
+                    | ChartExKind::Histogram
+                    | ChartExKind::Pareto
+                    | ChartExKind::BoxWhisker
+            );
+            let drawn = match element {
+                ChartExElement::PlotArea => true,
+                ChartExElement::Title => self.title.is_some(),
+                ChartExElement::Legend => self.legend.unwrap_or(kind.default_legend()),
+                ChartExElement::DataLabels => self.data_labels.unwrap_or(matches!(
+                    kind,
+                    ChartExKind::Waterfall
+                        | ChartExKind::Funnel
+                        | ChartExKind::Treemap
+                        | ChartExKind::Sunburst
+                )),
+                ChartExElement::CategoryAxis => axes || kind == ChartExKind::Funnel,
+                ChartExElement::ValueAxis | ChartExElement::Gridlines => axes,
+                ChartExElement::CategoryAxisTitle => {
+                    (axes || kind == ChartExKind::Funnel) && self.category_axis_title.is_some()
+                }
+                ChartExElement::ValueAxisTitle => axes && self.value_axis_title.is_some(),
+            };
+            if !drawn {
+                return refuse(&format!(
+                    "a style for {element:?}, which the chart does not draw"
+                ));
+            }
         }
         let binned = matches!(self.kind, ChartExKind::Histogram | ChartExKind::Pareto);
         if !binned && (self.underflow.is_some() || self.overflow.is_some() || self.bins_closed_left)
@@ -642,12 +726,16 @@ impl ChartEx {
             ),
             _ => None,
         };
+        // The labels' box style goes before their visibility.
+        let box_style = self.element_sp_pr(ChartExElement::DataLabels);
+        let styled =
+            |labels: &str| labels.replace("<cx:visibility", &format!("{box_style}<cx:visibility"));
         match (self.data_labels, default_labels) {
             (Some(false), _) => {}
-            (_, Some(labels)) => out.push_str(labels),
-            (Some(true), None) => out.push_str(
+            (_, Some(labels)) => out.push_str(&styled(labels)),
+            (Some(true), None) => out.push_str(&styled(
                 r#"<cx:dataLabels><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels>"#,
-            ),
+            )),
             (None, None) => {}
         }
         out.push_str(&format!(r#"<cx:dataId val="{id}"/>"#));
@@ -775,11 +863,16 @@ impl ChartEx {
         out.push_str("</cx:chartData><cx:chart>");
         if let Some(title) = &self.title {
             out.push_str(&format!(
-                r#"<cx:title pos="t" align="ctr" overlay="0"><cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx></cx:title>"#,
-                escape(title)
+                r#"<cx:title pos="t" align="ctr" overlay="0"><cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx>{}</cx:title>"#,
+                escape(title),
+                self.element_sp_pr(ChartExElement::Title)
             ));
         }
         out.push_str("<cx:plotArea><cx:plotAreaRegion>");
+        let surface = self.element_sp_pr(ChartExElement::PlotArea);
+        if !surface.is_empty() {
+            out.push_str(&format!("<cx:plotSurface>{surface}</cx:plotSurface>"));
+        }
         let count = self.all_series().count();
         for (id, (_, name, style)) in self.all_series().enumerate() {
             self.series_xml(&mut out, id, name, style.as_ref());
@@ -791,19 +884,27 @@ impl ChartEx {
             ));
         }
         out.push_str("</cx:plotAreaRegion>");
-        let axis_title = |text: &Option<String>| {
+        let axis_title = |text: &Option<String>, element| {
             text.as_ref().map_or(String::new(), |text| {
                 format!(
-                    "<cx:title><cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx></cx:title>",
-                    escape(text)
+                    "<cx:title><cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx>{}</cx:title>",
+                    escape(text),
+                    self.element_sp_pr(element)
                 )
             })
         };
-        let category_title = axis_title(&self.category_axis_title);
-        let value_title = axis_title(&self.value_axis_title);
+        let category_title =
+            axis_title(&self.category_axis_title, ChartExElement::CategoryAxisTitle);
+        let value_title = axis_title(&self.value_axis_title, ChartExElement::ValueAxisTitle);
+        let category_line = self.element_sp_pr(ChartExElement::CategoryAxis);
+        let value_line = self.element_sp_pr(ChartExElement::ValueAxis);
+        let gridlines = match self.element_sp_pr(ChartExElement::Gridlines) {
+            sp_pr if sp_pr.is_empty() => "<cx:majorGridlines/>".to_string(),
+            sp_pr => format!("<cx:majorGridlines>{sp_pr}</cx:majorGridlines>"),
+        };
         if kind == ChartExKind::Funnel {
             out.push_str(&format!(
-                r#"<cx:axis id="1"><cx:catScaling gapWidth="0.0599999987"/>{category_title}<cx:tickLabels/></cx:axis>"#,
+                r#"<cx:axis id="1"><cx:catScaling gapWidth="0.0599999987"/>{category_title}<cx:tickLabels/>{category_line}</cx:axis>"#,
             ));
         }
         let gap = match kind {
@@ -814,7 +915,7 @@ impl ChartEx {
         };
         if let Some(gap) = gap {
             out.push_str(&format!(
-                r#"<cx:axis id="0"><cx:catScaling gapWidth="{gap}"/>{category_title}<cx:tickLabels/></cx:axis><cx:axis id="1"><cx:valScaling/>{value_title}<cx:majorGridlines/><cx:tickLabels/></cx:axis>"#
+                r#"<cx:axis id="0"><cx:catScaling gapWidth="{gap}"/>{category_title}<cx:tickLabels/>{category_line}</cx:axis><cx:axis id="1"><cx:valScaling/>{value_title}{gridlines}<cx:tickLabels/>{value_line}</cx:axis>"#
             ));
         }
         if kind == ChartExKind::Pareto {
@@ -822,10 +923,16 @@ impl ChartEx {
         }
         out.push_str("</cx:plotArea>");
         if self.legend.unwrap_or(kind.default_legend()) {
-            out.push_str(if kind == ChartExKind::RegionMap {
-                r#"<cx:legend pos="r" align="min" overlay="0"/>"#
+            let (pos, align) = if kind == ChartExKind::RegionMap {
+                ("r", "min")
             } else {
-                r#"<cx:legend pos="t" align="ctr" overlay="0"/>"#
+                ("t", "ctr")
+            };
+            let sp_pr = self.element_sp_pr(ChartExElement::Legend);
+            out.push_str(&if sp_pr.is_empty() {
+                format!(r#"<cx:legend pos="{pos}" align="{align}" overlay="0"/>"#)
+            } else {
+                format!(r#"<cx:legend pos="{pos}" align="{align}" overlay="0">{sp_pr}</cx:legend>"#)
             });
         }
         out.push_str("</cx:chart>");

@@ -1,8 +1,8 @@
 //! Public-API tests for the Office 2016 chart kinds (`chartEx` parts).
 
 use ooxml_chart::{
-    chart_ex_content_types_override, Anchor, Bins, ChartError, ChartEx, ChartExKind, GraphicFrame,
-    SeriesName,
+    chart_ex_content_types_override, Anchor, AreaStyle, Bins, ChartError, ChartEx, ChartExElement,
+    ChartExKind, GraphicFrame, SeriesName,
 };
 
 const VALUES: &str = "'S'!$C$2:$C$6";
@@ -334,4 +334,76 @@ fn a_region_map_colours_by_value_and_leaves_geography_to_excel() {
             .render(),
         Err(ChartError::Unsupported { .. })
     ));
+}
+
+#[test]
+fn each_element_takes_its_style_where_excel_writes_it() {
+    let sp = r#"<cx:spPr><a:solidFill><a:srgbClr val="F0F0F0"/></a:solidFill></cx:spPr>"#;
+    let style = AreaStyle::new().fill("F0F0F0");
+    let all = [
+        ChartExElement::PlotArea,
+        ChartExElement::Title,
+        ChartExElement::Legend,
+        ChartExElement::DataLabels,
+        ChartExElement::CategoryAxis,
+        ChartExElement::ValueAxis,
+        ChartExElement::CategoryAxisTitle,
+        ChartExElement::ValueAxisTitle,
+        ChartExElement::Gridlines,
+    ];
+    let chart = all.iter().fold(
+        ChartEx::new(ChartExKind::Waterfall, VALUES)
+            .categories(CATS)
+            .title("T")
+            .legend(true)
+            .category_axis_title("C")
+            .value_axis_title("V"),
+        |chart, element| chart.element_style(*element, style.clone()),
+    );
+    let xml = render(chart);
+    for place in [
+        format!("<cx:plotSurface>{sp}</cx:plotSurface>"),
+        format!("</cx:tx>{sp}</cx:title>"),
+        format!(r#"<cx:legend pos="t" align="ctr" overlay="0">{sp}</cx:legend>"#),
+        format!("{sp}<cx:visibility"),
+        format!("<cx:tickLabels/>{sp}</cx:axis>"),
+        format!("<cx:majorGridlines>{sp}</cx:majorGridlines>"),
+    ] {
+        assert!(xml.contains(&place), "{place}");
+    }
+    assert_eq!(xml.matches(sp).count(), 9);
+
+    // A second style for one element replaces the first.
+    let once = render(
+        ChartEx::new(ChartExKind::Waterfall, VALUES)
+            .categories(CATS)
+            .element_style(ChartExElement::PlotArea, AreaStyle::new().fill("000000"))
+            .element_style(ChartExElement::PlotArea, style.clone()),
+    );
+    assert_eq!(once.matches("<cx:plotSurface>").count(), 1);
+    assert!(once.contains(sp));
+
+    // Elements the chart does not draw are refused.
+    for chart in [
+        ChartEx::new(ChartExKind::Treemap, VALUES)
+            .categories(CATS)
+            .element_style(ChartExElement::ValueAxis, style.clone()),
+        ChartEx::new(ChartExKind::Funnel, VALUES)
+            .categories(CATS)
+            .element_style(ChartExElement::Gridlines, style.clone()),
+        ChartEx::new(ChartExKind::Waterfall, VALUES)
+            .categories(CATS)
+            .element_style(ChartExElement::Title, style.clone()),
+        ChartEx::new(ChartExKind::Histogram, VALUES)
+            .categories(CATS)
+            .element_style(ChartExElement::ValueAxisTitle, style.clone()),
+        ChartEx::new(ChartExKind::Waterfall, VALUES)
+            .categories(CATS)
+            .data_labels(false)
+            .element_style(ChartExElement::DataLabels, style.clone()),
+    ] {
+        assert!(
+            matches!(chart.render(), Err(ChartError::Unsupported { what }) if what.contains("does not draw"))
+        );
+    }
 }

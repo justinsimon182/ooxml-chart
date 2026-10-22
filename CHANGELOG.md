@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ChartEx::element_style` gives a chartEx element its own fill, border and
+  effects: the plot area, title, legend, data labels, axis lines, axis titles
+  and gridlines (`ChartExElement`). An element the chart does not draw is
+  refused.
+- `scripts/excel_parity.py` also checks Excel's formats on every element of
+  the seven chartEx kinds: 68 of 68 matched.
 - `ChartSpec::title_overlay` lays the title over the plot area.
 - `ChartSpec::no_auto_title` stops Excel titling an untitled one-series chart
   with the series name.
