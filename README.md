@@ -129,8 +129,8 @@ let part = ChartSpec::new(ChartKind::LineMarkers)
 # Ok::<(), ooxml_chart::ChartError>(())
 ```
 
-Settings Excel would repair away â€” a malformed colour, an inverted axis range,
-a label position the chart kind does not allow â€” are refused with a typed
+Settings Excel would repair away — a malformed colour, an inverted axis range,
+a label position the chart kind does not allow — are refused with a typed
 `ChartError` rather than written.
 
 `Series`, `Axis` and `DataLabels` are `#[non_exhaustive]`: build them with

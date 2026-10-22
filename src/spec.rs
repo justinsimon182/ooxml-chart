@@ -75,6 +75,14 @@ pub enum ChartKind {
     Contour,
     /// Like [`ChartKind::Contour`] drawn as lines only.
     ContourWireframe,
+    /// Lines stacked into one running total, no point markers.
+    LineStacked,
+    /// Lines stacked and scaled so each category totals 100%, no markers.
+    LinePercentStacked,
+    /// Stacked lines with a marker at each point.
+    LineMarkersStacked,
+    /// Percent-stacked lines with a marker at each point.
+    LineMarkersPercentStacked,
 }
 
 impl ChartKind {
@@ -393,6 +401,10 @@ pub struct Series {
     /// recalculate can still draw the axis.
     #[cfg_attr(feature = "serde", serde(default))]
     pub categories_cache: Option<Vec<String>>,
+    /// Pie, doughnut, pie-of-pie and bar-of-pie only: pull every slice out
+    /// from the centre by this percentage of the radius (0-400).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub explosion: Option<u16>,
     /// Values to cache in the part, so viewers that do not recalculate can
     /// still draw the plot. Non-finite entries are written as blanks.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -442,6 +454,7 @@ impl Series {
             marker: None,
             multi_level_categories: false,
             categories_cache: None,
+            explosion: None,
             values_cache: None,
             name_cache: None,
             bubble_sizes: None,
@@ -497,6 +510,14 @@ impl Series {
     #[must_use]
     pub fn with_line_width(mut self, points: f64) -> Self {
         self.line_width_pt = Some(points);
+        self
+    }
+
+    /// Pulls every slice out from the centre by `percent` of the radius
+    /// (0-400). Pie, doughnut, pie-of-pie and bar-of-pie only.
+    #[must_use]
+    pub fn with_explosion(mut self, percent: u16) -> Self {
+        self.explosion = Some(percent);
         self
     }
 
@@ -2708,6 +2729,8 @@ pub struct ChartSpec {
     pub(crate) secondary_value_axis: Axis,
     #[cfg_attr(feature = "serde", serde(default = "default_bubble_scale"))]
     pub(crate) bubble_scale: u16,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) bubble_3d: bool,
 }
 
 impl ChartSpec {
@@ -2753,6 +2776,7 @@ impl ChartSpec {
             extra_plots: Vec::new(),
             secondary_value_axis: Axis::default(),
             bubble_scale: 100,
+            bubble_3d: false,
         }
     }
 
@@ -2944,6 +2968,13 @@ impl ChartSpec {
     #[must_use]
     pub fn secondary_value_axis(mut self, axis: Axis) -> Self {
         self.secondary_value_axis = axis;
+        self
+    }
+
+    /// Draws the bubbles as shaded spheres. Bubble charts only.
+    #[must_use]
+    pub fn bubble_3d(mut self) -> Self {
+        self.bubble_3d = true;
         self
     }
 
@@ -3271,7 +3302,74 @@ mod tests {
         let out = rendered(ChartSpec::new(ChartKind::Line).series(one_series()));
         assert!(out.contains("<c:lineChart>"), "{out}");
         assert!(out.contains(r#"<c:grouping val="standard"/>"#), "{out}");
-        assert!(out.contains(r#"<c:marker val="0"/>"#), "{out}");
+        // Excel leaves the chart-level flag out when no series has markers.
+        assert!(!out.contains(r#"<c:marker val="#), "{out}");
+        assert!(
+            out.contains(r#"<c:marker><c:symbol val="none"/></c:marker>"#),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn stacked_lines_group_and_keep_markers_off_unless_asked() {
+        let out = rendered(ChartSpec::new(ChartKind::LinePercentStacked).series(one_series()));
+        assert!(
+            out.contains(r#"<c:grouping val="percentStacked"/>"#),
+            "{out}"
+        );
+        assert!(out.contains(r#"<c:symbol val="none"/>"#), "{out}");
+        let out = rendered(ChartSpec::new(ChartKind::LineMarkersStacked).series(one_series()));
+        assert!(out.contains(r#"<c:grouping val="stacked"/>"#), "{out}");
+        assert!(out.contains(r#"<c:marker val="1"/>"#), "{out}");
+        // Excel's 3-D line has no stacked form.
+        let three_d = ChartSpec::new(ChartKind::LineStacked)
+            .view_3d(View3D::new())
+            .series(one_series())
+            .render();
+        assert!(matches!(three_d, Err(ChartError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn a_series_explosion_pulls_every_slice_and_only_on_round_kinds() {
+        let out =
+            rendered(ChartSpec::new(ChartKind::Doughnut).series(one_series().with_explosion(25)));
+        assert!(
+            out.contains(r#"</c:tx><c:explosion val="25"/><c:cat>"#),
+            "{out}"
+        );
+        for (kind, percent) in [(ChartKind::Line, 25), (ChartKind::Pie, 401)] {
+            let refused = ChartSpec::new(kind)
+                .series(one_series().with_explosion(percent))
+                .render();
+            assert!(refused.is_err(), "{kind:?} {percent}");
+        }
+    }
+
+    #[test]
+    fn bubbles_go_3d_only_on_a_bubble_chart() {
+        let bubbles = one_series().with_bubble_sizes("'S'!$C$2:$C$5");
+        let out = rendered(
+            ChartSpec::new(ChartKind::Bubble)
+                .bubble_3d()
+                .series(bubbles),
+        );
+        assert!(out.contains(r#"<c:bubble3D val="1"/>"#), "{out}");
+        let refused = ChartSpec::new(ChartKind::Line)
+            .bubble_3d()
+            .series(one_series())
+            .render();
+        assert!(matches!(refused, Err(ChartError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn smooth_scatter_lines_take_excels_smooth_style() {
+        let out = rendered(
+            ChartSpec::new(ChartKind::ScatterLines).series(one_series().with_smooth(true)),
+        );
+        assert!(
+            out.contains(r#"<c:scatterStyle val="smoothMarker"/>"#),
+            "{out}"
+        );
     }
 
     #[test]

@@ -124,7 +124,12 @@ fn family(kind: ChartKind) -> Family {
         ChartKind::ColumnClustered => bar(false, "clustered"),
         ChartKind::ColumnStacked => bar(false, "stacked"),
         ChartKind::ColumnPercentStacked => bar(false, "percentStacked"),
-        ChartKind::Line | ChartKind::LineMarkers => Family::Line,
+        ChartKind::Line
+        | ChartKind::LineMarkers
+        | ChartKind::LineStacked
+        | ChartKind::LinePercentStacked
+        | ChartKind::LineMarkersStacked
+        | ChartKind::LineMarkersPercentStacked => Family::Line,
         ChartKind::Area => Family::Area {
             grouping: "standard",
         },
@@ -164,6 +169,14 @@ fn family(kind: ChartKind) -> Family {
 }
 
 /// The families drawn as slices: no axes, a point per slice.
+fn line_grouping(kind: ChartKind) -> &'static str {
+    match kind {
+        ChartKind::LineStacked | ChartKind::LineMarkersStacked => "stacked",
+        ChartKind::LinePercentStacked | ChartKind::LineMarkersPercentStacked => "percentStacked",
+        _ => "standard",
+    }
+}
+
 fn is_round(family: Family) -> bool {
     matches!(
         family,
@@ -227,11 +240,9 @@ fn layout_xml(layout: Option<&Layout>, plot_area: bool) -> String {
             String::new()
         };
     };
-    let target = if plot_area {
-        format!(
-            r#"<c:layoutTarget val="{}"/>"#,
-            if layout.inner { "inner" } else { "outer" }
-        )
+    // `outer` is the default, which Excel leaves out.
+    let target = if plot_area && layout.inner {
+        format!(r#"<c:layoutTarget val="{}"/>"#, "inner")
     } else {
         String::new()
     };
@@ -761,6 +772,12 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     }
     if primary.family == Family::Bubble {
         check_range("bubble scale", i64::from(spec.bubble_scale), 0, 300)?;
+    } else if spec.bubble_3d {
+        return unsupported(format!("3-D bubbles on {:?}", primary.kind));
+    }
+    if primary.three_d && line_grouping(primary.kind) != "standard" {
+        // Excel's 3-D line has no stacked form.
+        return unsupported(format!("3-D {:?}", primary.kind));
     }
     Ok(())
 }
@@ -818,6 +835,12 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
     }
     if plot.family == Family::Bubble && series.bubble_sizes.is_none() {
         return Err(ChartError::MissingBubbleSizes);
+    }
+    if let Some(explosion) = series.explosion {
+        if !is_round(plot.family) {
+            return unsupported(format!("series explosion on {:?}", plot.kind));
+        }
+        check_range("explosion", i64::from(explosion), 0, 400)?;
     }
     for (_, point) in &series.points {
         if let Some(color) = &point.color {
@@ -1363,14 +1386,7 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
         .series
         .iter()
         .enumerate()
-        .map(|(offset, series)| {
-            series_xml(
-                plot,
-                first_index + offset,
-                series,
-                spec.data_labels.as_ref(),
-            )
-        })
+        .map(|(offset, series)| series_xml(plot, first_index + offset, series, spec))
         .collect();
     let labels = spec
         .data_labels
@@ -1437,7 +1453,18 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             )
         }
         Family::Line => {
-            let marker = i32::from(plot.kind == ChartKind::LineMarkers);
+            // As Excel saves it: set when any series shows markers, else left out.
+            let marked = matches!(
+                plot.kind,
+                ChartKind::LineMarkers
+                    | ChartKind::LineMarkersStacked
+                    | ChartKind::LineMarkersPercentStacked
+            ) || plot
+                .series
+                .iter()
+                .any(|s| matches!(s.marker, Some((symbol, _)) if symbol != MarkerSymbol::None));
+            let marker = if marked { r#"<c:marker val="1"/>"# } else { "" };
+            let grouping = line_grouping(plot.kind);
             let lead = plot.lead;
             let drop = flag_xml(spec.drop_lines && lead, "dropLines");
             let high_low = flag_xml(spec.high_low_lines && lead, "hiLowLines");
@@ -1447,7 +1474,7 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
                 String::new()
             };
             format!(
-                r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}{drop}{high_low}{bars}<c:marker val="{marker}"/>{axes}</c:lineChart>"#,
+                r#"<c:lineChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}{drop}{high_low}{bars}{marker}{axes}</c:lineChart>"#,
             )
         }
         Family::OfPie { bar } => {
@@ -1471,7 +1498,13 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             drop = flag_xml(spec.drop_lines && plot.lead, "dropLines"),
         ),
         Family::Scatter => format!(
-            r#"<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>{series}{labels}{axes}</c:scatterChart>"#,
+            r#"<c:scatterChart><c:scatterStyle val="{style}"/><c:varyColors val="0"/>{series}{labels}{axes}</c:scatterChart>"#,
+            // Excel's own name for a chart of smooth lines; drawing follows the series.
+            style = if !plot.series.is_empty() && plot.series.iter().all(|s| s.smooth) {
+                "smoothMarker"
+            } else {
+                "lineMarker"
+            },
         ),
         Family::Bubble => format!(
             r#"<c:bubbleChart><c:varyColors val="0"/>{series}{labels}<c:bubbleScale val="{scale}"/><c:showNegBubbles val="0"/>{axes}</c:bubbleChart>"#,
@@ -1563,7 +1596,11 @@ fn plot_3d_xml(
     labels: &str,
     axes: &str,
 ) -> String {
-    let gap_depth = view.gap_depth.unwrap_or(150);
+    // 150 is the default, which Excel leaves out.
+    let gap_depth = match view.gap_depth {
+        Some(depth) if depth != 150 => format!(r#"<c:gapDepth val="{depth}"/>"#),
+        _ => String::new(),
+    };
     match plot.family {
         Family::Bar {
             horizontal,
@@ -1580,15 +1617,15 @@ fn plot_3d_xml(
                 .map(|shape| format!(r#"<c:shape val="{}"/>"#, shape.code()))
                 .unwrap_or_default();
             format!(
-                r#"<c:bar3DChart><c:barDir val="{direction}"/><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapWidth val="{gap}"/><c:gapDepth val="{gap_depth}"/>{shape}{axes}</c:bar3DChart>"#,
+                r#"<c:bar3DChart><c:barDir val="{direction}"/><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapWidth val="{gap}"/>{gap_depth}{shape}{axes}</c:bar3DChart>"#,
                 gap = spec.gap_width,
             )
         }
         Family::Line => format!(
-            r#"<c:line3DChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}<c:gapDepth val="{gap_depth}"/>{axes}</c:line3DChart>"#
+            r#"<c:line3DChart><c:grouping val="standard"/><c:varyColors val="0"/>{series}{labels}{gap_depth}{axes}</c:line3DChart>"#
         ),
         Family::Area { grouping } => format!(
-            r#"<c:area3DChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}<c:gapDepth val="{gap_depth}"/>{axes}</c:area3DChart>"#
+            r#"<c:area3DChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}{gap_depth}{axes}</c:area3DChart>"#
         ),
         _ => format!(r#"<c:pie3DChart><c:varyColors val="1"/>{series}{labels}</c:pie3DChart>"#),
     }
@@ -1612,10 +1649,13 @@ fn view_3d_xml(view: &View3D, family: Family) -> String {
     let perspective = if right_angle {
         String::new()
     } else {
-        format!(
-            r#"<c:perspective val="{}"/>"#,
-            view.perspective.unwrap_or(30)
-        )
+        // 30 is the default, which Excel leaves out.
+        match view.perspective {
+            Some(perspective) if perspective != 30 => {
+                format!(r#"<c:perspective val="{perspective}"/>"#)
+            }
+            _ => String::new(),
+        }
     };
     let surface = |tag: &str, style: &Option<AreaStyle>| {
         style
@@ -1948,12 +1988,8 @@ fn solid(rgb: &str) -> String {
     )
 }
 
-fn series_xml(
-    plot: &PlotRef<'_>,
-    index: usize,
-    series: &Series,
-    chart_wide_labels: Option<&DataLabels>,
-) -> String {
+fn series_xml(plot: &PlotRef<'_>, index: usize, series: &Series, spec: &ChartSpec) -> String {
+    let chart_wide_labels = spec.data_labels.as_ref();
     let name = match &series.name {
         SeriesName::Literal(text) => format!("<c:tx><c:v>{}</c:v></c:tx>", escape(text)),
         SeriesName::Reference(reference) => {
@@ -1969,6 +2005,10 @@ fn series_xml(
         }
     };
     let shape = shape_xml(plot, series);
+    let shape = match series.explosion {
+        Some(percent) => format!(r#"{shape}<c:explosion val="{percent}"/>"#),
+        None => shape,
+    };
     let points = format!(
         "{}{}",
         points_xml(plot, series),
@@ -2013,8 +2053,9 @@ fn series_xml(
         let tail = if plot.family == Family::Bubble {
             let sizes = series.bubble_sizes.as_deref().unwrap_or_default();
             format!(
-                r#"<c:bubbleSize><c:numRef><c:f>{}</c:f></c:numRef></c:bubbleSize><c:bubble3D val="0"/>"#,
-                escape(sizes)
+                r#"<c:bubbleSize><c:numRef><c:f>{}</c:f></c:numRef></c:bubbleSize><c:bubble3D val="{}"/>"#,
+                escape(sizes),
+                i32::from(spec.bubble_3d)
             )
         } else {
             smooth_xml(series)
@@ -2141,16 +2182,30 @@ fn marker_xml(kind: ChartKind, series: &Series, color: Option<&str>) -> String {
         .unwrap_or_default();
 
     match series.marker {
+        // Excel keeps no size or fill on a hidden marker.
+        Some((MarkerSymbol::None, _)) => format!(
+            r#"<c:marker><c:symbol val="{}"/></c:marker>"#,
+            MarkerSymbol::None.code()
+        ),
         Some((symbol, size)) => format!(
             r#"<c:marker><c:symbol val="{}"/><c:size val="{size}"/>{marker_fill}</c:marker>"#,
             symbol.code()
         ),
         // Plain `Line` and `Radar` mean "no markers"; Excel writes that on
         // every series rather than relying on the chart-level flag.
-        None if matches!(kind, ChartKind::Line | ChartKind::Radar) => format!(
-            r#"<c:marker><c:symbol val="{}"/></c:marker>"#,
-            MarkerSymbol::None.code()
-        ),
+        None if matches!(
+            kind,
+            ChartKind::Line
+                | ChartKind::LineStacked
+                | ChartKind::LinePercentStacked
+                | ChartKind::Radar
+        ) =>
+        {
+            format!(
+                r#"<c:marker><c:symbol val="{}"/></c:marker>"#,
+                MarkerSymbol::None.code()
+            )
+        }
         None if !marker_fill.is_empty() => format!("<c:marker>{marker_fill}</c:marker>"),
         None => String::new(),
     }
@@ -2721,6 +2776,12 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
         position,
         cross_between,
     } = *place;
+    // An axis crossing at the far end sits on the far side; Excel says so.
+    let position = match position {
+        "l" if axis.crosses_max => "r",
+        "b" if axis.crosses_max => "t",
+        other => other,
+    };
     let tag = match kind {
         AxisKind::Category => "catAx",
         AxisKind::Date => "dateAx",

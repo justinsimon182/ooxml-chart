@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ChartKind::LineStacked`, `LinePercentStacked`, `LineMarkersStacked` and
+  `LineMarkersPercentStacked`. A 3-D line refuses them, as Excel has none.
+- `Series::with_explosion` pulls every slice out (Excel's exploded pie,
+  3-D pie and doughnut); refused off pie, doughnut and of-pie.
+- `ChartSpec::bubble_3d` draws shaded 3-D bubbles.
+- `scripts/excel_parity.py` checks the gallery against all 81 Excel chart
+  types; the gallery gains each 3-D bar shape and grouping, stacked lines,
+  exploded and 3-D bubble charts and smooth scatter (160 parts).
+- `excel_roundtrip.py` lists Excel's known rewrites apart from losses and
+  sees chart-wide labels that Excel moves onto each series.
+
 - `GraphicFrame::for_chart_ex` takes the chart's kind and wraps the frame in
   `mc:AlternateContent`, as Excel saves it: Excel 2013 and other readers
   without chartEx show a notice shape instead of failing.
@@ -53,6 +64,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Output now matches what Excel saves: a scatter with only smooth series is
+  `smoothMarker`; the line chart `c:marker` flag is written only when a
+  series shows markers; a hidden marker carries no size or fill; default
+  `gapDepth` (150), `perspective` (30) and `layoutTarget` (outer) are left
+  out; an axis crossing at the maximum sits on the far side (`axPos`).
 - XML escaping runs in one pass with one allocation. A 50-series line chart
   renders in 44 µs, down from 100 µs. The output is byte-identical.
 - Cached values and labels are written into one buffer instead of one

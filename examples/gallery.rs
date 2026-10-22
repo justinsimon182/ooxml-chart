@@ -48,6 +48,10 @@ fn run() {
         ("column_percent", ChartKind::ColumnPercentStacked),
         ("line", ChartKind::Line),
         ("line_markers", ChartKind::LineMarkers),
+        ("line_stacked", ChartKind::LineStacked),
+        ("line_percent", ChartKind::LinePercentStacked),
+        ("line_markers_stacked", ChartKind::LineMarkersStacked),
+        ("line_markers_percent", ChartKind::LineMarkersPercentStacked),
         ("area", ChartKind::Area),
         ("area_stacked", ChartKind::AreaStacked),
         ("area_percent", ChartKind::AreaPercentStacked),
@@ -90,6 +94,102 @@ fn run() {
         let part = spec.render().expect("a chart");
         fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
     }
+    // Each 3-D bar and column grouping in each shape Excel offers, and 3-D area.
+    let three_d = [
+        ("bar_clustered", ChartKind::BarClustered),
+        ("bar_stacked", ChartKind::BarStacked),
+        ("bar_percent", ChartKind::BarPercentStacked),
+        ("column_clustered", ChartKind::ColumnClustered),
+        ("column_stacked", ChartKind::ColumnStacked),
+        ("column_percent", ChartKind::ColumnPercentStacked),
+        ("column_depth", ChartKind::ColumnClustered),
+    ];
+    let shapes = [
+        ("box", BarShape::Box),
+        ("cylinder", BarShape::Cylinder),
+        ("cone", BarShape::Cone),
+        ("pyramid", BarShape::Pyramid),
+    ];
+    for (file, kind) in three_d {
+        for (shape_name, shape) in shapes {
+            let mut view = View3D::new().bar_shape(shape);
+            if file == "column_depth" {
+                view = view.with_depth_axis();
+            }
+            let part = ChartSpec::new(kind)
+                .title(format!("3-D {file} {shape_name}"))
+                .view_3d(view)
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2"))
+                .render()
+                .expect("a 3-D chart");
+            fs::write(dir.join(format!("3d_{file}_{shape_name}.xml")), part.xml)
+                .expect("write chart");
+        }
+    }
+    let more = [
+        (
+            "area_3d",
+            ChartSpec::new(ChartKind::Area).view_3d(View3D::new()),
+        ),
+        (
+            "area_3d_percent",
+            ChartSpec::new(ChartKind::AreaPercentStacked).view_3d(View3D::new()),
+        ),
+        ("bubble_3d", ChartSpec::new(ChartKind::Bubble).bubble_3d()),
+        ("scatter_smooth", ChartSpec::new(ChartKind::ScatterLines)),
+        (
+            "scatter_smooth_no_markers",
+            ChartSpec::new(ChartKind::ScatterLines),
+        ),
+        (
+            "scatter_lines_no_markers",
+            ChartSpec::new(ChartKind::ScatterLines),
+        ),
+    ];
+    for (file, spec) in more {
+        let mut both = [
+            series("North", "B", "8E0DD1"),
+            series("South", "C", "0090B2"),
+        ];
+        for s in &mut both {
+            let mut one = s.clone().with_categories("'Sheet1'!$A$2:$A$5");
+            if file == "bubble_3d" {
+                one = one.with_bubble_sizes("'Sheet1'!$C$2:$C$5");
+            }
+            if file.starts_with("scatter_smooth") {
+                one = one.with_smooth(true);
+            }
+            if file.ends_with("no_markers") {
+                one = one.with_marker(MarkerSymbol::None, 5);
+            }
+            *s = one;
+        }
+        let [first, second] = both;
+        let part = spec
+            .title(file)
+            .series(first)
+            .series(second)
+            .render()
+            .expect("a chart");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+    // Every slice pulled out, as Excel's exploded pie, 3-D pie and doughnut.
+    for (file, kind, three_d) in [
+        ("pie_exploded", ChartKind::Pie, false),
+        ("pie_3d_exploded", ChartKind::Pie, true),
+        ("doughnut_exploded", ChartKind::Doughnut, false),
+    ] {
+        let mut spec = ChartSpec::new(kind)
+            .title(file)
+            .series(series("Share", "B", "8E0DD1").with_explosion(25));
+        if three_d {
+            spec = spec.view_3d(View3D::new());
+        }
+        let part = spec.render().expect("an exploded chart");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+
     // Every kind again with every option that applies to it switched on, so a
     // schema validator sees each code path.
     for (file, kind) in kinds {
@@ -644,9 +744,12 @@ fn run() {
         (
             "series_name_cache",
             ChartSpec::new(ChartKind::Line).title("Cached name").series(
-                Series::new(SeriesName::Reference("'S'!$B$1".into()), "'S'!$B$2:$B$5")
-                    .with_categories("'S'!$A$2:$A$5")
-                    .with_cached_name("North"),
+                Series::new(
+                    SeriesName::Reference("'Sheet1'!$B$1".into()),
+                    "'Sheet1'!$B$2:$B$5",
+                )
+                .with_categories("'Sheet1'!$A$2:$A$5")
+                .with_cached_name("North"),
             ),
         ),
         (

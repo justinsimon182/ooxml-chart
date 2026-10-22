@@ -11,19 +11,19 @@ does not read, write, or zip `.xlsx` packages.
 | Feature | Status |
 | --- | --- |
 | Clustered, stacked and percent-stacked bar and column | Done |
-| Line, line with markers | Done |
+| Line, line with markers, stacked and percent-stacked (with or without markers) | Done |
 | Area, stacked area, percent-stacked area | Done |
 | Scatter, scatter with lines | Done |
-| Bubble | Done — `Series::with_bubble_sizes`, `ChartSpec::bubble_scale` |
+| Bubble, 3-D bubble | Done — `Series::with_bubble_sizes`, `ChartSpec::bubble_scale`, `ChartSpec::bubble_3d` |
 | Pie, doughnut (`hole_size`, `first_slice_angle`) | Done |
 | Radar, filled radar | Done |
 | Combination charts and a secondary value axis | Done — `Plot`, `ChartSpec::plot`; column, line and area share one category axis |
 | Stock | Done (`StockHighLowClose`, `StockOpenHighLowClose`, volume via a secondary-axis plot) |
 | Pie-of-pie, bar-of-pie | Done (`PieOfPie`, `BarOfPie`, `OfPie`) |
-| 3-D bar, column, line, area, pie | Done (`View3D`) |
+| 3-D bar, column, line, area, pie; box, cylinder, cone and pyramid bars | Done (`View3D`, `View3D::bar_shape`) |
 | Surface, wireframe surface, contour, wireframe contour | Done (`Surface`, `SurfaceWireframe`, `Contour`, `ContourWireframe`) |
-| Waterfall, funnel, histogram, Pareto, box and whisker, treemap, sunburst, region map | Done â€” `ChartEx`, a `chartEx` part; several series on box and whisker |
-| Pivot charts | Done â€” `ChartSpec::pivot_source`; series need caches; formats survive a refresh (Excel writes `c:pivotFmts` itself); the pivot table is the caller's |
+| Waterfall, funnel, histogram, Pareto, box and whisker, treemap, sunburst, region map | Done — `ChartEx`, a `chartEx` part; several series on box and whisker |
+| Pivot charts | Done — `ChartSpec::pivot_source`; series need caches; formats survive a refresh (Excel writes `c:pivotFmts` itself); the pivot table is the caller's |
 | Combining scatter or bubble with other kinds | Done for scatter (added as a `Plot` to column, line or area); bubble cannot be combined in Excel |
 
 ## Series
@@ -31,7 +31,7 @@ does not read, write, or zip `.xlsx` packages.
 | Feature | Status |
 | --- | --- |
 | Colour, line width, smooth lines, marker shape and size | Done |
-| Per-point colour and pie explosion | Done — `PointFormat` |
+| Per-point colour and pie explosion; exploded pie, 3-D pie and doughnut | Done — `PointFormat`, `Series::with_explosion` |
 | Trendlines (linear, exponential, logarithmic, polynomial, power, moving average) | Done — refused where Excel forbids them |
 | Cached values and categories | Done |
 | Error bars | Done — `ErrorBars`; fixed, percentage, std dev, std error, custom; x and y on scatter and bubble. `errDir` is left out on bar and column, written elsewhere |
@@ -94,7 +94,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type — 115 in all) validates against the
+date axis, each 3-D bar shape, and one drawing per anchor type — 160 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
@@ -114,7 +114,8 @@ Excel is the signal to add a test for what it complained about.
 | --- | --- |
 | Schema validation of the gallery | Done — manual script |
 | Schema validation in CI | Done — `schema` job, schemas vendored in `scripts/schemas` |
-| Round-trip through a real Excel install | Done — `scripts/excel_roundtrip.py`; Windows with desktop Excel, run by hand |
+| Round-trip through a real Excel install | Done — `scripts/excel_roundtrip.py`; Windows with desktop Excel, run by hand. 157 of 157 parts load and save back with nothing lost; Excel's known rewrites (defaults left out, labels moved to each series) are listed apart |
+| Parity with Excel's chart types | Done — `scripts/excel_parity.py` has Excel draw each of its 81 `XlChartType`s and matches each to a gallery part: 81 of 81 |
 
 ## Ground rules for new features
 
