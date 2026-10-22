@@ -4,6 +4,19 @@ All notable changes to this crate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ChartSpec::title_overlay` lays the title over the plot area.
+- `ChartSpec::no_auto_title` stops Excel titling an untitled one-series chart
+  with the series name.
+- `ChartSpec::series_axis` formats the depth axis of a 3-D chart (title,
+  gridlines, visibility, order, ticks, labels).
+- `scripts/excel_parity.py` also checks Excel's 126 chart elements
+  (`Chart.SetElement`): 126 of 126 matched. The gallery gains the element
+  parts it needed (185 parts).
+
 ## [0.8.0] - 2026-10-22
 
 ### Added

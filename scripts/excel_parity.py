@@ -7,6 +7,12 @@ to a signature: the plot element and the attributes that tell the types apart
 the chartEx layout). A type is covered when some gallery part has its
 signature. Excel's region map sends the sample category names (Q1-Q5) to Bing.
 
+Then Excel applies each of its chart elements (`Chart.SetElement`, every
+`MsoChartElementType`) to a fitting base chart. What the element adds over the
+bare chart, by element path and `val`, must all appear in the gallery (copies
+Excel writes on each series aside, and free numbers matched by path); what it
+removes must be absent from some gallery part.
+
     cargo run --example gallery -- out
     python scripts/excel_parity.py out
 """
@@ -97,6 +103,130 @@ $xl.Quit()
 """
 
 
+ELEMENTS_POWERSHELL = r"""param($out, $only = '.')
+Add-Type -AssemblyName office
+$xl = New-Object -ComObject Excel.Application
+$xl.DisplayAlerts = $false
+# Base chart per element family: 51 column, 65 line with markers, 58 stacked bar, 54 3-D column.
+function Base($name) {
+  if ($name -match 'Trendline') { return 5100 }
+  if ($name -match 'UpDownBars|HiLo|DropLine|DropHiLo|LineNone') { return 65 }
+  if ($name -match 'SeriesLine') { return 58 }
+  if ($name -match 'DataLabel(Left|Right|Top|Bottom)$') { return 65 }
+  if ($name -match 'DataLabelBestFit') { return 5 }
+  if ($name -match 'CategoryAxis(Thousands|Millions|Billions|LogScale)') { return -4169 }
+  if ($name -match 'SeriesAxis|Wall|Floor') { return -4100 }
+  return 51
+}
+$names = [Enum]::GetNames([Microsoft.Office.Core.MsoChartElementType]) | Select-Object -Unique | Where-Object { $_ -match $only }
+$bases = @{}
+foreach ($n in $names) { $bases[(Base $n)] = 1 }
+$jobs = @()
+foreach ($b in $bases.Keys) { $jobs += ,@("base_$b", $b, $null) }
+foreach ($n in $names) { $jobs += ,@($n, (Base $n), $n) }
+foreach ($j in $jobs) {
+  $name, $type, $el = $j
+  try {
+    $wb = $xl.Workbooks.Add(); $ws = $wb.Worksheets.Item(1)
+    $ws.Range("A1:C1").Value2 = @("Cat", "North", "South")
+    for ($r = 2; $r -le 6; $r++) { $ws.Cells.Item($r, 1).Value2 = "Q$($r-1)"; $ws.Cells.Item($r, 2).Value2 = 10 * $r; $ws.Cells.Item($r, 3).Value2 = 7 * $r + 3 }
+    # 5100: a column chart of one series, which a trendline element needs.
+    $src = if ($type -eq 5100) { "A1:B6" } else { "A1:C6" }
+    if ($type -eq 5100) { $type = 51 }
+    $ws.Range($src).Select() | Out-Null
+    $chart = $ws.Shapes.AddChart2(-1, $type, 200, 10, 400, 300).Chart
+    if ($el -and $el -match 'Secondary') { $chart.SeriesCollection(2).AxisGroup = 2 }
+    if ($el) { $chart.SetElement([int][Microsoft.Office.Core.MsoChartElementType]::$el) }
+    $wb.SaveAs("$out\$name.xlsx", 51); $wb.Close($false)
+  } catch { "ERR $name $($_.Exception.Message)"; try { $wb.Close($false) } catch {} }
+}
+$xl.Quit()
+"""
+
+SKIP = {"spPr", "txPr", "extLst", "numCache", "strCache", "layout", "printSettings", "clrMapOvr", "userShapes"}
+
+
+def base_of(name):
+    if "Trendline" in name: return 5100
+    if re.search(r"UpDownBars|HiLo|DropLine|DropHiLo", name): return 65
+    if "LineNone" in name: return 65
+    if "SeriesLine" in name: return 58
+    if re.search(r"DataLabel(Left|Right|Top|Bottom)$", name): return 65
+    if "DataLabelBestFit" in name: return 5
+    if re.search(r"CategoryAxis(Thousands|Millions|Billions|LogScale)", name): return -4169
+    if re.search(r"SeriesAxis|Wall|Floor", name): return -4100
+    return 51
+
+
+def items(data):
+    out = set()
+
+    def walk(e, path):
+        if not e.tag.startswith(C):
+            return
+        tag = e.tag[len(C):]
+        if tag in SKIP:
+            return
+        here = f"{path}/{tag}"
+        v = None if tag in ("axId", "crossAx") else e.get("val")
+        out.add((here, v))
+        if tag == "rich":
+            return
+        for child in e:
+            walk(child, here)
+
+    walk(ET.fromstring(data), "")
+    return out
+
+
+
+
+def element_parity(work, gallery_dir):
+    script = os.path.join(work, "elements.ps1")
+    open(script, "w").write(ELEMENTS_POWERSHELL)
+    run = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, work],
+        capture_output=True, text=True,
+    )
+    errors = [line for line in run.stdout.splitlines() if line.startswith("ERR")]
+    for line in errors:
+        print(line)
+
+    def chart(path):
+        with zipfile.ZipFile(path) as z:
+            return items(z.read("xl/charts/chart1.xml"))
+
+    gallery = []
+    for f in glob.glob(gallery_dir + "/*.xml"):
+        data = open(f, "rb").read()
+        if b"<c:chartSpace" in data[:400]:
+            gallery.append(items(data))
+    union = set().union(*gallery)
+    numeric = re.compile(r"-?[0-9.]+")
+    numeric_paths = {p for p, v in union if v is not None and numeric.fullmatch(v)}
+    bases = {int(os.path.basename(f)[5:-5]): chart(f) for f in glob.glob(work + "/base_*.xlsx")}
+    matched = missed = 0
+    for f in sorted(glob.glob(work + "/mso*.xlsx")):
+        name = os.path.basename(f)[:-5]
+        mine = chart(f)
+        base = bases[base_of(name)]
+        added = {(p, v) for p, v in mine - base if "/ser/dLbls" not in p}
+        removed = {p for p, _ in base - mine} - {p for p, _ in mine}
+        lacking = sorted(
+            (p, v) for p, v in added - union
+            if not (v is not None and numeric.fullmatch(v) and p in numeric_paths)
+        )
+        gone = all(any(p not in {q for q, _ in s} for s in gallery) for p in removed)
+        if lacking or not gone:
+            missed += 1
+            print("MISS", name, "| needs", lacking, "| removes", sorted(removed))
+        else:
+            matched += 1
+    print(f"{matched} of {matched + missed} Excel chart elements matched by the gallery")
+    # An element Excel itself refuses on every base is no feature to match.
+    return missed == 0
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: excel_parity.py <gallery dir>")
@@ -127,8 +257,11 @@ def main():
     print(f"{len(excel) - len(missing)} of {len(excel)} Excel chart types matched by a gallery part")
     for f in os.listdir(work):
         os.remove(os.path.join(work, f))
+    elements_ok = element_parity(work, sys.argv[1])
+    for f in os.listdir(work):
+        os.remove(os.path.join(work, f))
     os.rmdir(work)
-    sys.exit(1 if missing or len(excel) < 81 else 0)
+    sys.exit(1 if missing or len(excel) < 81 or not elements_ok else 0)
 
 
 if __name__ == "__main__":
