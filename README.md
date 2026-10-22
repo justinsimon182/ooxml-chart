@@ -227,6 +227,28 @@ outliers, quartile method). A treemap places parent labels with
 `ParentLabels`; every kind shows or hides value labels with `data_labels`.
 The other kinds draw one series.
 
+## Pivot charts
+
+A pivot chart is an ordinary chart that names its pivot table. Excel draws its
+series from their caches, so each needs cached values (and cached categories
+when it has categories); the pivot table itself is yours to write:
+
+```rust
+use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
+
+let part = ChartSpec::new(ChartKind::ColumnClustered)
+    .pivot_source("[Book1.xlsx]Sheet1!PivotTable1")
+    .series(
+        Series::new(SeriesName::Reference("Sheet1!$G$1".into()), "Sheet1!$G$2:$G$4")
+            .with_categories("Sheet1!$F$2:$F$4")
+            .with_cached_name("Total")
+            .with_cached_categories(vec!["E".into(), "N".into(), "S".into()])
+            .with_cached_values(vec![5.0, 17.0, 7.0]),
+    )
+    .render()?;
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
 ## Combination charts
 
 ```rust
