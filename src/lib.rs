@@ -53,8 +53,8 @@ mod template;
 mod xml;
 
 pub use chartex::{
-    chart_ex_content_types_override, Bins, ChartEx, ChartExKind, CHART_EX_CONTENT_TYPE,
-    CHART_EX_RELATIONSHIP_TYPE,
+    chart_ex_content_types_override, Bins, BoxWhiskerStyle, ChartEx, ChartExKind, ChartExSeries,
+    ParentLabels, QuartileMethod, CHART_EX_CONTENT_TYPE, CHART_EX_RELATIONSHIP_TYPE,
 };
 pub use chartsheet::{
     chartsheet_content_types_override, chartsheet_drawing_part, chartsheet_part,

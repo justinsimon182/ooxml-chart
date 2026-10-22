@@ -334,6 +334,9 @@ def main():
             changed += 1
             continue
         lines = dropped(original, after)
+        if name.startswith("cx_"):
+            # Excel moves each chartEx reference into a hidden workbook name.
+            lines = [line for line in lines if "/f text=" not in line]
         if lines:
             changed += 1
             print(f"DIFF {name}: {len(lines)} element(s) dropped or changed by Excel")

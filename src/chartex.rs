@@ -91,7 +91,138 @@ pub enum Bins {
     Width(f64),
 }
 
-/// An Office 2016 chart with one series.
+/// Another series on a box and whisker chart, sharing the first's categories.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
+#[non_exhaustive]
+pub struct ChartExSeries {
+    /// The values.
+    pub values: String,
+    /// The series name.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub name: Option<SeriesName>,
+}
+
+impl ChartExSeries {
+    /// A series plotting `values`.
+    pub fn new(values: impl Into<String>) -> Self {
+        Self {
+            values: values.into(),
+            name: None,
+        }
+    }
+
+    /// Sets the series name.
+    #[must_use]
+    pub fn name(mut self, name: SeriesName) -> Self {
+        self.name = Some(name);
+        self
+    }
+}
+
+/// How a box and whisker chart computes its quartiles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum QuartileMethod {
+    /// Median excluded from both halves (Excel's default, `QUARTILE.EXC`).
+    #[default]
+    Exclusive,
+    /// Median included in both halves (`QUARTILE.INC`).
+    Inclusive,
+}
+
+/// What a box and whisker chart draws besides the boxes. The default is
+/// Excel's: mean markers and outliers shown, mean line and inner points hidden.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields, default))]
+#[non_exhaustive]
+pub struct BoxWhiskerStyle {
+    /// A line joining the means of the boxes.
+    pub mean_line: bool,
+    /// A marker at each box's mean.
+    pub mean_marker: bool,
+    /// Every point inside the whiskers.
+    pub inner_points: bool,
+    /// Points beyond the whiskers.
+    pub outliers: bool,
+    /// How quartiles are computed.
+    pub quartile_method: QuartileMethod,
+}
+
+impl Default for BoxWhiskerStyle {
+    fn default() -> Self {
+        Self {
+            mean_line: false,
+            mean_marker: true,
+            inner_points: false,
+            outliers: true,
+            quartile_method: QuartileMethod::Exclusive,
+        }
+    }
+}
+
+impl BoxWhiskerStyle {
+    /// Excel's default; see the type docs.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Shows or hides the line joining the means.
+    #[must_use]
+    pub fn mean_line(mut self, show: bool) -> Self {
+        self.mean_line = show;
+        self
+    }
+
+    /// Shows or hides the mean markers.
+    #[must_use]
+    pub fn mean_marker(mut self, show: bool) -> Self {
+        self.mean_marker = show;
+        self
+    }
+
+    /// Shows or hides the points inside the whiskers.
+    #[must_use]
+    pub fn inner_points(mut self, show: bool) -> Self {
+        self.inner_points = show;
+        self
+    }
+
+    /// Shows or hides the outliers.
+    #[must_use]
+    pub fn outliers(mut self, show: bool) -> Self {
+        self.outliers = show;
+        self
+    }
+
+    /// Sets the quartile method.
+    #[must_use]
+    pub fn quartile_method(mut self, method: QuartileMethod) -> Self {
+        self.quartile_method = method;
+        self
+    }
+}
+
+/// Where a treemap puts the labels of its parent categories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ParentLabels {
+    /// Over the top-left of the parent's rectangles (Excel's default).
+    Overlapping,
+    /// In a banner above the parent's rectangles.
+    Banner,
+    /// Not shown.
+    None,
+}
+
+/// An Office 2016 chart. Every kind has one series, except box and whisker,
+/// which takes more with [`ChartEx::add_series`].
 ///
 /// ```
 /// use ooxml_chart::{ChartEx, ChartExKind};
@@ -134,6 +265,19 @@ pub struct ChartEx {
     /// Histogram and Pareto only: the binning, or `None` for Excel's automatic bins.
     #[cfg_attr(feature = "serde", serde(default))]
     pub bins: Option<Bins>,
+    /// Box and whisker only: further series after the first.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub more_series: Vec<ChartExSeries>,
+    /// Box and whisker only: what is drawn, or `None` for Excel's default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub box_whisker: Option<BoxWhiskerStyle>,
+    /// Treemap only: where parent labels go, or `None` for Excel's default.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub parent_labels: Option<ParentLabels>,
+    /// Show value labels, or `None` for Excel's default for the kind (shown
+    /// on waterfall, funnel, treemap and sunburst).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub data_labels: Option<bool>,
 }
 
 impl ChartEx {
@@ -148,7 +292,39 @@ impl ChartEx {
             legend: None,
             subtotals: Vec::new(),
             bins: None,
+            more_series: Vec::new(),
+            box_whisker: None,
+            parent_labels: None,
+            data_labels: None,
         }
+    }
+
+    /// Box and whisker only: adds a series.
+    #[must_use]
+    pub fn add_series(mut self, series: ChartExSeries) -> Self {
+        self.more_series.push(series);
+        self
+    }
+
+    /// Box and whisker only: sets what is drawn.
+    #[must_use]
+    pub fn box_whisker(mut self, style: BoxWhiskerStyle) -> Self {
+        self.box_whisker = Some(style);
+        self
+    }
+
+    /// Treemap only: sets where parent labels go.
+    #[must_use]
+    pub fn parent_labels(mut self, labels: ParentLabels) -> Self {
+        self.parent_labels = Some(labels);
+        self
+    }
+
+    /// Shows or hides value labels.
+    #[must_use]
+    pub fn data_labels(mut self, show: bool) -> Self {
+        self.data_labels = Some(show);
+        self
     }
 
     /// Sets the category labels; see [`ChartEx::categories`](field@ChartEx::categories).
@@ -205,8 +381,21 @@ impl ChartEx {
             None if self.kind.needs_categories() => return refuse("no categories"),
             None => {}
         }
-        if let Some(SeriesName::Reference(name)) = &self.name {
-            reference::check(name)?;
+        let is_box = self.kind == ChartExKind::BoxWhisker;
+        if !self.more_series.is_empty() && !is_box {
+            return refuse("more than one series");
+        }
+        if self.box_whisker.is_some() && !is_box {
+            return refuse("box and whisker options");
+        }
+        if self.parent_labels.is_some() && self.kind != ChartExKind::Treemap {
+            return refuse("parent labels");
+        }
+        for (values, name) in self.all_series() {
+            reference::check(values)?;
+            if let Some(SeriesName::Reference(name)) = name {
+                reference::check(name)?;
+            }
         }
         if !self.subtotals.is_empty() && self.kind != ChartExKind::Waterfall {
             return refuse("subtotals");
@@ -222,6 +411,104 @@ impl ChartEx {
             _ => {}
         }
         Ok(())
+    }
+
+    fn series_xml(&self, out: &mut String, id: usize, name: &Option<SeriesName>) {
+        let kind = self.kind;
+        out.push_str(&format!(
+            r#"<cx:series layoutId="{}" uniqueId="{{00000000-0000-0000-0000-{:012}}}">"#,
+            kind.layout_id(),
+            id + 1
+        ));
+        match name {
+            Some(SeriesName::Literal(text)) => out.push_str(&format!(
+                "<cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx>",
+                escape(text)
+            )),
+            Some(SeriesName::Reference(cell)) => out.push_str(&format!(
+                "<cx:tx><cx:txData><cx:f>{}</cx:f></cx:txData></cx:tx>",
+                escape(cell)
+            )),
+            None => {}
+        }
+        // Data labels as Excel writes them for a new chart of each kind.
+        let default_labels = match kind {
+            ChartExKind::Waterfall => Some(
+                r#"<cx:dataLabels pos="outEnd"><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels>"#,
+            ),
+            ChartExKind::Funnel => Some(
+                r#"<cx:dataLabels><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels>"#,
+            ),
+            ChartExKind::Treemap => Some(
+                r#"<cx:dataLabels pos="inEnd"><cx:visibility seriesName="0" categoryName="1" value="0"/></cx:dataLabels>"#,
+            ),
+            ChartExKind::Sunburst => Some(
+                r#"<cx:dataLabels pos="ctr"><cx:visibility seriesName="0" categoryName="1" value="0"/></cx:dataLabels>"#,
+            ),
+            _ => None,
+        };
+        match (self.data_labels, default_labels) {
+            (Some(false), _) => {}
+            (_, Some(labels)) => out.push_str(labels),
+            (Some(true), None) => out.push_str(
+                r#"<cx:dataLabels><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels>"#,
+            ),
+            (None, None) => {}
+        }
+        out.push_str(&format!(r#"<cx:dataId val="{id}"/>"#));
+        let bins = match self.bins {
+            Some(Bins::Count(count)) => format!(r#"<cx:binCount val="{count}"/>"#),
+            Some(Bins::Width(width)) => format!(r#"<cx:binSize val="{width}"/>"#),
+            None => String::new(),
+        };
+        let flag = |on: bool| if on { "1" } else { "0" };
+        match kind {
+            ChartExKind::Waterfall => {
+                out.push_str("<cx:layoutPr><cx:subtotals>");
+                for point in &self.subtotals {
+                    out.push_str(&format!(r#"<cx:idx val="{point}"/>"#));
+                }
+                out.push_str("</cx:subtotals></cx:layoutPr>");
+            }
+            ChartExKind::Histogram => out.push_str(&format!(
+                r#"<cx:layoutPr><cx:binning intervalClosed="r">{bins}</cx:binning></cx:layoutPr>"#
+            )),
+            ChartExKind::Pareto if bins.is_empty() => out.push_str(
+                r#"<cx:layoutPr><cx:aggregation/></cx:layoutPr><cx:axisId val="1"/>"#,
+            ),
+            ChartExKind::Pareto => out.push_str(&format!(
+                r#"<cx:layoutPr><cx:binning intervalClosed="r">{bins}</cx:binning></cx:layoutPr><cx:axisId val="1"/>"#
+            )),
+            ChartExKind::BoxWhisker => {
+                let style = self.box_whisker.unwrap_or_default();
+                out.push_str(&format!(
+                    r#"<cx:layoutPr><cx:visibility meanLine="{}" meanMarker="{}" nonoutliers="{}" outliers="{}"/><cx:statistics quartileMethod="{}"/></cx:layoutPr>"#,
+                    flag(style.mean_line),
+                    flag(style.mean_marker),
+                    flag(style.inner_points),
+                    flag(style.outliers),
+                    match style.quartile_method {
+                        QuartileMethod::Exclusive => "exclusive",
+                        QuartileMethod::Inclusive => "inclusive",
+                    },
+                ));
+            }
+            ChartExKind::Treemap => out.push_str(&format!(
+                r#"<cx:layoutPr><cx:parentLabelLayout val="{}"/></cx:layoutPr>"#,
+                match self.parent_labels.unwrap_or(ParentLabels::Overlapping) {
+                    ParentLabels::Overlapping => "overlapping",
+                    ParentLabels::Banner => "banner",
+                    ParentLabels::None => "none",
+                }
+            )),
+            _ => {}
+        }
+        out.push_str("</cx:series>");
+    }
+
+    fn all_series(&self) -> impl Iterator<Item = (&String, &Option<SeriesName>)> {
+        std::iter::once((&self.values, &self.name))
+            .chain(self.more_series.iter().map(|s| (&s.values, &s.name)))
     }
 
     /// Renders the `chartEx` part.
@@ -240,93 +527,49 @@ impl ChartEx {
             r#"<cx:chartSpace xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#,
             r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
             r#" xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex">"#,
-            r#"<cx:chartData><cx:data id="0">"#,
+            r#"<cx:chartData>"#,
         ));
-        if let Some(categories) = &self.categories {
-            out.push_str(&format!(
-                r#"<cx:strDim type="cat"><cx:f>{}</cx:f></cx:strDim>"#,
-                escape(categories)
-            ));
-        }
         // Hierarchical kinds size their shapes; the rest plot values.
         let dim = if matches!(kind, ChartExKind::Treemap | ChartExKind::Sunburst) {
             "size"
         } else {
             "val"
         };
-        out.push_str(&format!(
-            r#"<cx:numDim type="{dim}"><cx:f>{}</cx:f></cx:numDim></cx:data></cx:chartData><cx:chart>"#,
-            escape(&self.values)
-        ));
+        for (id, (values, _)) in self.all_series().enumerate() {
+            out.push_str(&format!(r#"<cx:data id="{id}">"#));
+            if let Some(categories) = &self.categories {
+                out.push_str(&format!(
+                    r#"<cx:strDim type="cat"><cx:f>{}</cx:f></cx:strDim>"#,
+                    escape(categories)
+                ));
+            }
+            out.push_str(&format!(
+                r#"<cx:numDim type="{dim}"><cx:f>{}</cx:f></cx:numDim></cx:data>"#,
+                escape(values)
+            ));
+        }
+        out.push_str("</cx:chartData><cx:chart>");
         if let Some(title) = &self.title {
             out.push_str(&format!(
                 r#"<cx:title pos="t" align="ctr" overlay="0"><cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx></cx:title>"#,
                 escape(title)
             ));
         }
-        out.push_str(&format!(
-            r#"<cx:plotArea><cx:plotAreaRegion><cx:series layoutId="{}" uniqueId="{{00000000-0000-0000-0000-000000000001}}">"#,
-            kind.layout_id()
-        ));
-        match &self.name {
-            Some(SeriesName::Literal(text)) => out.push_str(&format!(
-                "<cx:tx><cx:txData><cx:v>{}</cx:v></cx:txData></cx:tx>",
-                escape(text)
-            )),
-            Some(SeriesName::Reference(cell)) => out.push_str(&format!(
-                "<cx:tx><cx:txData><cx:f>{}</cx:f></cx:txData></cx:tx>",
-                escape(cell)
-            )),
-            None => {}
+        out.push_str("<cx:plotArea><cx:plotAreaRegion>");
+        let count = self.all_series().count();
+        for (id, (_, name)) in self.all_series().enumerate() {
+            self.series_xml(&mut out, id, name);
         }
-        // Data labels as Excel writes them for a new chart of each kind.
-        out.push_str(match kind {
-            ChartExKind::Waterfall => r#"<cx:dataLabels pos="outEnd"><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels>"#,
-            ChartExKind::Funnel => r#"<cx:dataLabels><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels>"#,
-            ChartExKind::Treemap => r#"<cx:dataLabels pos="inEnd"><cx:visibility seriesName="0" categoryName="1" value="0"/></cx:dataLabels>"#,
-            ChartExKind::Sunburst => r#"<cx:dataLabels pos="ctr"><cx:visibility seriesName="0" categoryName="1" value="0"/></cx:dataLabels>"#,
-            _ => "",
-        });
-        out.push_str(r#"<cx:dataId val="0"/>"#);
-        let bins = match self.bins {
-            Some(Bins::Count(count)) => format!(r#"<cx:binCount val="{count}"/>"#),
-            Some(Bins::Width(width)) => format!(r#"<cx:binSize val="{width}"/>"#),
-            None => String::new(),
-        };
-        match kind {
-            ChartExKind::Waterfall => {
-                out.push_str("<cx:layoutPr><cx:subtotals>");
-                for point in &self.subtotals {
-                    out.push_str(&format!(r#"<cx:idx val="{point}"/>"#));
-                }
-                out.push_str("</cx:subtotals></cx:layoutPr>");
-            }
-            ChartExKind::Histogram => out.push_str(&format!(
-                r#"<cx:layoutPr><cx:binning intervalClosed="r">{bins}</cx:binning></cx:layoutPr>"#
-            )),
-            ChartExKind::Pareto if bins.is_empty() => out.push_str(
-                r#"<cx:layoutPr><cx:aggregation/></cx:layoutPr><cx:axisId val="1"/>"#,
-            ),
-            ChartExKind::Pareto => out.push_str(&format!(
-                r#"<cx:layoutPr><cx:binning intervalClosed="r">{bins}</cx:binning></cx:layoutPr><cx:axisId val="1"/>"#
-            )),
-            ChartExKind::BoxWhisker => out.push_str(concat!(
-                r#"<cx:layoutPr><cx:visibility meanLine="0" meanMarker="1" nonoutliers="0" outliers="1"/>"#,
-                r#"<cx:statistics quartileMethod="exclusive"/></cx:layoutPr>"#,
-            )),
-            ChartExKind::Treemap => {
-                out.push_str(r#"<cx:layoutPr><cx:parentLabelLayout val="overlapping"/></cx:layoutPr>"#)
-            }
-            _ => {}
-        }
-        out.push_str("</cx:series>");
         if kind == ChartExKind::Pareto {
-            out.push_str(r#"<cx:series layoutId="paretoLine" ownerIdx="0" uniqueId="{00000000-0000-0000-0000-000000000002}"><cx:axisId val="2"/></cx:series>"#);
+            out.push_str(&format!(
+                r#"<cx:series layoutId="paretoLine" ownerIdx="0" uniqueId="{{00000000-0000-0000-0000-{:012}}}"><cx:axisId val="2"/></cx:series>"#,
+                count + 1
+            ));
         }
         out.push_str("</cx:plotAreaRegion>");
         if kind == ChartExKind::Funnel {
             out.push_str(
-                r#"<cx:axis id="1"><cx:catScaling gapWidth="0.06"/><cx:tickLabels/></cx:axis>"#,
+                r#"<cx:axis id="1"><cx:catScaling gapWidth="0.0599999987"/><cx:tickLabels/></cx:axis>"#,
             );
         }
         let gap = match kind {

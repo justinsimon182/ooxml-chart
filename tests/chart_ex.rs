@@ -124,3 +124,73 @@ fn a_frame_for_a_chart_ex_names_the_chartex_namespace() {
         r#"<Override PartName="/xl/charts/chartEx1.xml" ContentType="application/vnd.ms-office.chartex+xml"/>"#
     );
 }
+
+#[test]
+fn a_box_and_whisker_takes_several_series_each_with_its_own_data() {
+    use ooxml_chart::{BoxWhiskerStyle, ChartExSeries, QuartileMethod};
+    let xml = render(
+        ChartEx::new(ChartExKind::BoxWhisker, VALUES)
+            .categories(CATS)
+            .add_series(ChartExSeries::new("'S'!$D$2:$D$6").name(SeriesName::Literal("Two".into())))
+            .box_whisker(
+                BoxWhiskerStyle::new()
+                    .mean_line(true)
+                    .inner_points(true)
+                    .quartile_method(QuartileMethod::Inclusive),
+            ),
+    );
+    assert!(xml.contains(concat!(
+        r#"<cx:data id="1"><cx:strDim type="cat"><cx:f>&#39;S&#39;!$A$2:$A$6</cx:f></cx:strDim>"#,
+        r#"<cx:numDim type="val"><cx:f>&#39;S&#39;!$D$2:$D$6</cx:f></cx:numDim></cx:data>"#,
+    )));
+    assert!(xml.contains(r#"<cx:dataId val="1"/>"#), "{xml}");
+    assert!(xml.contains("<cx:v>Two</cx:v>"), "{xml}");
+    assert_eq!(
+        xml.matches(r#"<cx:visibility meanLine="1" meanMarker="1" nonoutliers="1" outliers="1"/><cx:statistics quartileMethod="inclusive"/>"#)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn treemap_parent_labels_and_data_labels_can_be_changed() {
+    use ooxml_chart::ParentLabels;
+    let xml = render(
+        ChartEx::new(ChartExKind::Treemap, VALUES)
+            .categories(CATS)
+            .parent_labels(ParentLabels::Banner)
+            .data_labels(false),
+    );
+    assert!(
+        xml.contains(r#"<cx:parentLabelLayout val="banner"/>"#),
+        "{xml}"
+    );
+    assert!(!xml.contains("<cx:dataLabels"), "{xml}");
+    let labelled = render(ChartEx::new(ChartExKind::Histogram, VALUES).data_labels(true));
+    assert!(labelled
+        .contains(r#"<cx:dataLabels><cx:visibility seriesName="0" categoryName="0" value="1"/>"#));
+}
+
+#[test]
+fn options_for_other_kinds_are_refused() {
+    use ooxml_chart::{BoxWhiskerStyle, ChartExSeries, ParentLabels};
+    for chart in [
+        ChartEx::new(ChartExKind::Funnel, VALUES)
+            .categories(CATS)
+            .add_series(ChartExSeries::new(VALUES)),
+        ChartEx::new(ChartExKind::Histogram, VALUES).box_whisker(BoxWhiskerStyle::new()),
+        ChartEx::new(ChartExKind::Sunburst, VALUES)
+            .categories(CATS)
+            .parent_labels(ParentLabels::None),
+    ] {
+        assert!(
+            matches!(chart.render(), Err(ChartError::Unsupported { .. })),
+            "{chart:?}"
+        );
+    }
+    let bad = ChartEx::new(ChartExKind::BoxWhisker, VALUES).add_series(ChartExSeries::new("A1:"));
+    assert!(matches!(
+        bad.render(),
+        Err(ChartError::InvalidReference { .. })
+    ));
+}

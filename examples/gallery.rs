@@ -269,6 +269,26 @@ fn run() {
         ("cx_pareto", ChartEx::new(K::Pareto, vals).categories(cats)),
         ("cx_box_whisker", ChartEx::new(K::BoxWhisker, vals)),
         (
+            "cx_box_whisker_full",
+            ChartEx::new(K::BoxWhisker, vals)
+                .categories(cats)
+                .add_series(ooxml_chart::ChartExSeries::new("'Sheet1'!$D$2:$D$6"))
+                .box_whisker(
+                    ooxml_chart::BoxWhiskerStyle::new()
+                        .mean_line(true)
+                        .inner_points(true)
+                        .quartile_method(ooxml_chart::QuartileMethod::Inclusive),
+                )
+                .data_labels(true),
+        ),
+        (
+            "cx_treemap_banner",
+            ChartEx::new(K::Treemap, vals)
+                .categories("'Sheet1'!$A$2:$B$6")
+                .parent_labels(ooxml_chart::ParentLabels::Banner)
+                .data_labels(false),
+        ),
+        (
             "cx_treemap",
             ChartEx::new(K::Treemap, vals).categories("'Sheet1'!$A$2:$B$6"),
         ),
