@@ -261,6 +261,19 @@ fn run() {
                 .subtotals([4]),
         ),
         ("cx_funnel", ChartEx::new(K::Funnel, vals).categories(cats)),
+        (
+            "cx_funnel_styled",
+            ChartEx::new(K::Funnel, vals)
+                .categories(cats)
+                .style(ooxml_chart::AreaStyle::new().fill("8E0DD1"))
+                .point(0, ooxml_chart::AreaStyle::new().fill("010102"))
+                .chart_area(
+                    ooxml_chart::AreaStyle::new()
+                        .fill("F8F6F0")
+                        .border("68248C"),
+                )
+                .text_style(ooxml_chart::TextStyle::new().size(9.0).color("010102")),
+        ),
         ("cx_histogram", ChartEx::new(K::Histogram, vals)),
         (
             "cx_histogram_bins",

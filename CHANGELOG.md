@@ -37,6 +37,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ChartEx` histograms and Pareto charts take overflow and underflow bins
   and left-closed intervals; waterfalls take `connector_lines`; kinds with
   axes take category and value axis titles. Gallery grows to 113 parts.
+- `ChartEx` series, single points, chart area and text take `AreaStyle` and
+  `TextStyle`. Picture fills are refused there until Excel is shown to load
+  one. Gallery grows to 114 parts.
 
 ### Changed
 

@@ -228,7 +228,9 @@ outliers, quartile method). A treemap places parent labels with
 Histograms and Pareto charts take `underflow`, `overflow` and
 `bins_closed_left`; waterfalls hide their joining lines with
 `connector_lines(false)`; kinds with axes take `category_axis_title` and
-`value_axis_title`.
+`value_axis_title`. Series (`style`), single points (`point`), the chart
+area (`chart_area`) and all text (`text_style`) take the same `AreaStyle` and
+`TextStyle` as other charts; picture fills are refused there for now.
 The other kinds draw one series.
 
 ## Pivot charts

@@ -1059,7 +1059,7 @@ fn check_title_runs(text: Option<&String>, runs: Option<&Vec<TitleRun>>) -> Resu
     Ok(())
 }
 
-fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
+pub(crate) fn check_text_style(style: &TextStyle) -> Result<(), ChartError> {
     if let Some(size) = style.size_pt {
         // Hundredths of a point in the file; a NaN size becomes -1.
         let hundredths = if size.is_finite() {
@@ -1196,7 +1196,7 @@ fn check_effects(effects: &Effects) -> Result<(), ChartError> {
     Ok(())
 }
 
-fn check_area_style(style: &AreaStyle) -> Result<(), ChartError> {
+pub(crate) fn check_area_style(style: &AreaStyle) -> Result<(), ChartError> {
     if let Some(effects) = &style.effects {
         check_effects(effects)?;
     }
@@ -2403,7 +2403,7 @@ fn run_props(tag: &str, extra_attrs: &str, style: &TextStyle) -> String {
 
 /// A `<c:txPr>`: default text properties for a whole element, optionally with
 /// its labels rotated.
-fn tx_pr_xml(style: Option<&TextStyle>, rotation: Option<i16>) -> String {
+pub(crate) fn tx_pr_xml(style: Option<&TextStyle>, rotation: Option<i16>) -> String {
     let body = match rotation {
         Some(degrees) => format!(
             r#"<a:bodyPr rot="{}" vert="horz"/>"#,
@@ -2535,7 +2535,7 @@ fn series_sp_pr(inner: &str, effects: Option<&Effects>) -> String {
     }
 }
 
-fn sp_pr_xml(style: &AreaStyle) -> String {
+pub(crate) fn sp_pr_xml(style: &AreaStyle) -> String {
     let fill = style.fill.as_ref().map(fill_xml).unwrap_or_default();
     let width = line_width_attr(style.border_width_pt);
     let line = match &style.border {

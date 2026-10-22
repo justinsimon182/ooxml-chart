@@ -13,7 +13,8 @@
 
 use crate::error::ChartError;
 use crate::reference;
-use crate::spec::SeriesName;
+use crate::render::{check_area_style, check_text_style, sp_pr_xml, tx_pr_xml};
+use crate::spec::{AreaStyle, Paint, SeriesName, TextStyle};
 use crate::xml::escape;
 
 /// The content type of a `chartEx` part.
@@ -102,6 +103,9 @@ pub struct ChartExSeries {
     /// The series name.
     #[cfg_attr(feature = "serde", serde(default))]
     pub name: Option<SeriesName>,
+    /// The series fill, border and effects.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub style: Option<AreaStyle>,
 }
 
 impl ChartExSeries {
@@ -110,7 +114,15 @@ impl ChartExSeries {
         Self {
             values: values.into(),
             name: None,
+            style: None,
         }
+    }
+
+    /// Sets the series fill, border and effects.
+    #[must_use]
+    pub fn style(mut self, style: AreaStyle) -> Self {
+        self.style = Some(style);
+        self
     }
 
     /// Sets the series name.
@@ -298,6 +310,18 @@ pub struct ChartEx {
     /// The value axis title, on kinds with a value axis.
     #[cfg_attr(feature = "serde", serde(default))]
     pub value_axis_title: Option<String>,
+    /// The first series' fill, border and effects.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub style: Option<AreaStyle>,
+    /// Single points of the first series restyled, by zero-based index.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub points: Vec<(u32, AreaStyle)>,
+    /// The chart area's fill, border and effects.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub chart_area: Option<AreaStyle>,
+    /// The font of every text on the chart.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub text_style: Option<TextStyle>,
 }
 
 impl ChartEx {
@@ -322,6 +346,10 @@ impl ChartEx {
             connector_lines: None,
             category_axis_title: None,
             value_axis_title: None,
+            style: None,
+            points: Vec::new(),
+            chart_area: None,
+            text_style: None,
         }
     }
 
@@ -371,6 +399,35 @@ impl ChartEx {
     #[must_use]
     pub fn connector_lines(mut self, show: bool) -> Self {
         self.connector_lines = Some(show);
+        self
+    }
+
+    /// Sets the first series' fill, border and effects.
+    #[must_use]
+    pub fn style(mut self, style: AreaStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Restyles one point of the first series, by zero-based index. A
+    /// treemap or sunburst point is one rectangle or segment.
+    #[must_use]
+    pub fn point(mut self, index: u32, style: AreaStyle) -> Self {
+        self.points.push((index, style));
+        self
+    }
+
+    /// Sets the chart area's fill, border and effects.
+    #[must_use]
+    pub fn chart_area(mut self, style: AreaStyle) -> Self {
+        self.chart_area = Some(style);
+        self
+    }
+
+    /// Sets the font of every text on the chart.
+    #[must_use]
+    pub fn text_style(mut self, style: TextStyle) -> Self {
+        self.text_style = Some(style);
         self
     }
 
@@ -459,6 +516,24 @@ impl ChartEx {
         if self.parent_labels.is_some() && self.kind != ChartExKind::Treemap {
             return refuse("parent labels");
         }
+        let styles = self
+            .more_series
+            .iter()
+            .filter_map(|s| s.style.as_ref())
+            .chain(self.style.iter())
+            .chain(self.points.iter().map(|(_, style)| style))
+            .chain(self.chart_area.iter());
+        for style in styles {
+            // shortcut: picture fills are unverified in a chartEx part; allow
+            // them once Excel has been shown to load one.
+            if matches!(style.fill, Some(Paint::Picture(_))) {
+                return refuse("a picture fill");
+            }
+            check_area_style(style)?;
+        }
+        if let Some(style) = &self.text_style {
+            check_text_style(style)?;
+        }
         let binned = matches!(self.kind, ChartExKind::Histogram | ChartExKind::Pareto);
         if !binned && (self.underflow.is_some() || self.overflow.is_some() || self.bins_closed_left)
         {
@@ -486,7 +561,7 @@ impl ChartEx {
         if (!has_axes || self.kind == ChartExKind::Funnel) && self.value_axis_title.is_some() {
             return refuse("a value axis title");
         }
-        for (values, name) in self.all_series() {
+        for (values, name, _) in self.all_series() {
             reference::check(values)?;
             if let Some(SeriesName::Reference(name)) = name {
                 reference::check(name)?;
@@ -508,7 +583,13 @@ impl ChartEx {
         Ok(())
     }
 
-    fn series_xml(&self, out: &mut String, id: usize, name: &Option<SeriesName>) {
+    fn series_xml(
+        &self,
+        out: &mut String,
+        id: usize,
+        name: &Option<SeriesName>,
+        style: Option<&AreaStyle>,
+    ) {
         let kind = self.kind;
         out.push_str(&format!(
             r#"<cx:series layoutId="{}" uniqueId="{{00000000-0000-0000-0000-{:012}}}">"#,
@@ -525,6 +606,17 @@ impl ChartEx {
                 escape(cell)
             )),
             None => {}
+        }
+        if let Some(style) = style {
+            out.push_str(&cx_sp_pr(style));
+        }
+        if id == 0 {
+            for (index, style) in &self.points {
+                out.push_str(&format!(
+                    r#"<cx:dataPt idx="{index}">{}</cx:dataPt>"#,
+                    cx_sp_pr(style)
+                ));
+            }
         }
         // Data labels as Excel writes them for a new chart of each kind.
         let default_labels = match kind {
@@ -624,9 +716,14 @@ impl ChartEx {
         out.push_str("</cx:series>");
     }
 
-    fn all_series(&self) -> impl Iterator<Item = (&String, &Option<SeriesName>)> {
-        std::iter::once((&self.values, &self.name))
-            .chain(self.more_series.iter().map(|s| (&s.values, &s.name)))
+    fn all_series(
+        &self,
+    ) -> impl Iterator<Item = (&String, &Option<SeriesName>, &Option<AreaStyle>)> {
+        std::iter::once((&self.values, &self.name, &self.style)).chain(
+            self.more_series
+                .iter()
+                .map(|s| (&s.values, &s.name, &s.style)),
+        )
     }
 
     /// Renders the `chartEx` part.
@@ -653,7 +750,7 @@ impl ChartEx {
         } else {
             "val"
         };
-        for (id, (values, _)) in self.all_series().enumerate() {
+        for (id, (values, _, _)) in self.all_series().enumerate() {
             out.push_str(&format!(r#"<cx:data id="{id}">"#));
             if let Some(categories) = &self.categories {
                 out.push_str(&format!(
@@ -675,8 +772,8 @@ impl ChartEx {
         }
         out.push_str("<cx:plotArea><cx:plotAreaRegion>");
         let count = self.all_series().count();
-        for (id, (_, name)) in self.all_series().enumerate() {
-            self.series_xml(&mut out, id, name);
+        for (id, (_, name, style)) in self.all_series().enumerate() {
+            self.series_xml(&mut out, id, name, style.as_ref());
         }
         if kind == ChartExKind::Pareto {
             out.push_str(&format!(
@@ -718,7 +815,29 @@ impl ChartEx {
         if self.legend.unwrap_or(kind.default_legend()) {
             out.push_str(r#"<cx:legend pos="t" align="ctr" overlay="0"/>"#);
         }
-        out.push_str("</cx:chart></cx:chartSpace>");
+        out.push_str("</cx:chart>");
+        if let Some(style) = &self.chart_area {
+            out.push_str(&cx_sp_pr(style));
+        }
+        if let Some(style) = &self.text_style {
+            // The c: text properties carry only a: content inside the wrapper.
+            let tx_pr = tx_pr_xml(Some(style), None);
+            out.push_str(
+                &tx_pr
+                    .replace("<c:txPr>", "<cx:txPr>")
+                    .replace("</c:txPr>", "</cx:txPr>"),
+            );
+        }
+        out.push_str("</cx:chartSpace>");
         Ok(out.into_bytes())
     }
+}
+
+/// A `c:spPr` re-tagged for the cx namespace; its content is all `a:`.
+fn cx_sp_pr(style: &AreaStyle) -> String {
+    let sp_pr = sp_pr_xml(style);
+    format!(
+        "<cx:spPr>{}</cx:spPr>",
+        &sp_pr["<c:spPr>".len()..sp_pr.len() - "</c:spPr>".len()]
+    )
 }
