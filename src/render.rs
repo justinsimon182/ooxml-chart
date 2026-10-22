@@ -61,6 +61,12 @@ fn chart_flags_xml(spec: &ChartSpec) -> String {
     if let Some(style) = spec.style {
         out.push_str(&format!(r#"<c:style val="{style}"/>"#));
     }
+    if let Some(name) = &spec.pivot_source {
+        out.push_str(&format!(
+            r#"<c:pivotSource><c:name>{}</c:name><c:fmtId val="0"/></c:pivotSource>"#,
+            escape(name)
+        ));
+    }
     out
 }
 
@@ -373,6 +379,15 @@ pub(crate) fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
     if let Some(style) = &spec.text_style {
         out.push_str(&tx_pr_xml(Some(style), None));
     }
+    if spec.pivot_source.is_some() {
+        // Without this Excel hides the pivot field buttons.
+        out.push_str(concat!(
+            r#"<c:extLst><c:ext uri="{781A3756-C4B2-4CAC-9D66-4F8BD8637D16}""#,
+            r#" xmlns:c14="http://schemas.microsoft.com/office/drawing/2007/8/2/chart"><c14:pivotOptions>"#,
+            r#"<c14:dropZoneFilter val="1"/><c14:dropZoneCategories val="1"/><c14:dropZoneData val="1"/>"#,
+            r#"<c14:dropZonesVisible val="1"/></c14:pivotOptions></c:ext></c:extLst>"#,
+        ));
+    }
     out.push_str("</c:chartSpace>");
 
     Ok(ChartPart {
@@ -391,6 +406,20 @@ fn unsupported(what: String) -> Result<(), ChartError> {
 /// case; the worse one is a chart that silently vanishes.
 fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     let primary = &plots[0];
+
+    // Excel draws a pivot chart's series from their caches alone: a series
+    // without them loads as no series at all.
+    if spec.pivot_source.is_some() {
+        for series in plots.iter().flat_map(|plot| plot.series) {
+            if series.values_cache.is_none()
+                || (series.categories.is_some() && series.categories_cache.is_none())
+            {
+                return unsupported(
+                    "a pivot chart series without cached values and categories".to_string(),
+                );
+            }
+        }
+    }
 
     // Text and area styling.
     for style in [&spec.title_style, &spec.text_style, &spec.legend_style]

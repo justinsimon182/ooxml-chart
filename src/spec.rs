@@ -2665,6 +2665,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) style: Option<u8>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) pivot_source: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) drop_lines: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) high_low_lines: bool,
@@ -2729,6 +2731,7 @@ impl ChartSpec {
             date_1904: false,
             language: None,
             style: None,
+            pivot_source: None,
             drop_lines: false,
             high_low_lines: false,
             series_lines: false,
@@ -3026,6 +3029,23 @@ impl ChartSpec {
     #[must_use]
     pub fn language(mut self, tag: impl Into<String>) -> Self {
         self.language = Some(tag.into());
+        self
+    }
+
+    /// Makes this a pivot chart over the named pivot table, e.g.
+    /// `"[Book1.xlsx]Sheet1!PivotTable1"`.
+    ///
+    /// The series still reference the pivot table's cells; the pivot table
+    /// itself is a workbook part this crate does not write. Excel shows the
+    /// field buttons and refreshes the chart with the table.
+    ///
+    /// Excel draws a pivot chart's series from their caches, not the sheet,
+    /// so every series needs [`Series::with_cached_values`], and
+    /// [`Series::with_cached_categories`] when it has categories; rendering
+    /// refuses one without them.
+    #[must_use]
+    pub fn pivot_source(mut self, pivot_table: impl Into<String>) -> Self {
+        self.pivot_source = Some(pivot_table.into());
         self
     }
 

@@ -318,6 +318,16 @@ fn run() {
     };
     let extras = [
         (
+            "pivot_chart",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .pivot_source("[Book1.xlsx]Sheet1!PivotTable1")
+                .series(
+                    series("Total", "B", "8E0DD1")
+                        .with_cached_values(vec![5.0, 17.0, 7.0, 3.0])
+                        .with_cached_categories(["E", "N", "S", "W"].map(String::from).to_vec()),
+                ),
+        ),
+        (
             "bubble",
             ChartSpec::new(ChartKind::Bubble)
                 .title("bubble")

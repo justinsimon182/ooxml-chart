@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Box and whisker charts take several series (`ChartExSeries`) and a
   `BoxWhiskerStyle`; treemaps take `ParentLabels`; every `ChartEx` kind can
   show or hide value labels.
+- `ChartSpec::pivot_source` makes a pivot chart over a named pivot table,
+  with Excel's field buttons shown. A pivot series without cached values (and
+  categories, when it has them) is refused: Excel loads it as no series.
+  Gallery grows to 111 parts.
 
 ### Changed
 

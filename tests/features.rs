@@ -688,3 +688,34 @@ mod chartsheets {
         assert!(workbook_sheet_element(&"x".repeat(31), 1, "rId1").is_ok());
     }
 }
+
+#[test]
+fn a_pivot_chart_names_its_table_and_needs_cached_series() {
+    use ooxml_chart::{ChartError, ChartKind, ChartSpec, Series, SeriesName};
+    let series = Series::new(SeriesName::Literal("Total".into()), "'S'!$G$2:$G$4")
+        .with_categories("'S'!$F$2:$F$4");
+    let spec = ChartSpec::new(ChartKind::ColumnClustered).pivot_source("[Book1.xlsx]S!PivotTable1");
+    assert!(matches!(
+        spec.clone()
+            .series(series.clone().with_cached_values(vec![1.0, 2.0, 3.0]))
+            .render(),
+        Err(ChartError::Unsupported { .. })
+    ));
+    let xml = String::from_utf8(
+        spec.series(
+            series
+                .with_cached_values(vec![1.0, 2.0, 3.0])
+                .with_cached_categories(vec!["a".into(), "b".into(), "c".into()]),
+        )
+        .render()
+        .expect("a pivot chart")
+        .xml,
+    )
+    .unwrap();
+    assert!(xml.contains(
+        r#"<c:pivotSource><c:name>[Book1.xlsx]S!PivotTable1</c:name><c:fmtId val="0"/></c:pivotSource><c:chart>"#
+    ));
+    assert!(xml.ends_with(
+        r#"<c14:dropZonesVisible val="1"/></c14:pivotOptions></c:ext></c:extLst></c:chartSpace>"#
+    ));
+}
