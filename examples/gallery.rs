@@ -190,6 +190,150 @@ fn run() {
         fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
     }
 
+    // Excel's chart elements (Chart.SetElement) that no part above shows.
+    let column = || {
+        ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series("North", "B", "8E0DD1"))
+            .series(series("South", "C", "0090B2"))
+    };
+    let line = || {
+        ChartSpec::new(ChartKind::LineMarkers)
+            .series(series("North", "B", "8E0DD1"))
+            .series(series("South", "C", "0090B2"))
+    };
+    let pie = || ChartSpec::new(ChartKind::Pie).series(series("Share", "B", "8E0DD1"));
+    let labels = |at| DataLabels::values().at(at);
+    let tick_out = |axis: Axis| axis.major_tick(ooxml_chart::TickMark::Out);
+    let elements = [
+        (
+            "element_title_overlay",
+            column().title("Overlaid").title_overlay(),
+        ),
+        ("element_no_auto_title", pie().no_auto_title()),
+        (
+            "element_labels_center",
+            column().data_labels(labels(DataLabelPosition::Center)),
+        ),
+        (
+            "element_labels_inside_end",
+            column().data_labels(labels(DataLabelPosition::InsideEnd)),
+        ),
+        (
+            "element_labels_inside_base",
+            column().data_labels(labels(DataLabelPosition::InsideBase)),
+        ),
+        (
+            "element_labels_outside_end",
+            column().data_labels(labels(DataLabelPosition::OutsideEnd)),
+        ),
+        (
+            "element_labels_left",
+            line().data_labels(labels(DataLabelPosition::Left)),
+        ),
+        (
+            "element_labels_right",
+            line().data_labels(labels(DataLabelPosition::Right)),
+        ),
+        (
+            "element_labels_above",
+            line().data_labels(labels(DataLabelPosition::Above)),
+        ),
+        (
+            "element_labels_below",
+            line().data_labels(labels(DataLabelPosition::Below)),
+        ),
+        (
+            "element_labels_best_fit",
+            pie().data_labels(labels(DataLabelPosition::BestFit)),
+        ),
+        (
+            "element_data_table",
+            column().data_table(DataTable::new().vertical_borders(true).legend_keys(false)),
+        ),
+        ("element_legend_none", column().legend(LegendPosition::None)),
+        ("element_legend_left", column().legend(LegendPosition::Left)),
+        ("element_legend_top", column().legend(LegendPosition::Top)),
+        (
+            "element_axes",
+            column()
+                .category_axis(
+                    tick_out(Axis::default())
+                        .reversed(true)
+                        .gridlines(true)
+                        .minor_gridlines(true),
+                )
+                .value_axis(tick_out(Axis::default()).display_units(DisplayUnit::Billions)),
+        ),
+        (
+            "element_axes_hidden_labels",
+            column()
+                .category_axis(
+                    Axis::default()
+                        .tick_labels(TickLabels::None)
+                        .crosses_max(true),
+                )
+                .value_axis(Axis::default().display_units(DisplayUnit::Millions)),
+        ),
+        (
+            "element_series_axis",
+            ChartSpec::new(ChartKind::ColumnClustered)
+                .view_3d(View3D::new().with_depth_axis())
+                .series_axis(
+                    tick_out(Axis::default())
+                        .title("Series")
+                        .gridlines(true)
+                        .minor_gridlines(true)
+                        .reversed(true)
+                        .tick_labels(TickLabels::None),
+                )
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+        (
+            "element_series_axis_hidden",
+            ChartSpec::new(ChartKind::Line)
+                .view_3d(View3D::new())
+                .series_axis(Axis::default().hidden())
+                .series(series("North", "B", "8E0DD1"))
+                .series(series("South", "C", "0090B2")),
+        ),
+    ];
+    for (file, spec) in elements {
+        let part = spec.render().expect("an element part");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+    for (file, trendline) in [
+        (
+            "element_trend_exponential",
+            Trendline::new(TrendlineKind::Exponential),
+        ),
+        (
+            "element_trend_forecast",
+            Trendline::new(TrendlineKind::Linear).forward(2.0),
+        ),
+        (
+            "element_trend_moving_average",
+            Trendline::new(TrendlineKind::MovingAverage(2)),
+        ),
+    ] {
+        let part = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series("North", "B", "8E0DD1").with_trendline(trendline))
+            .render()
+            .expect("a trendline");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+    for (file, amount) in [
+        ("element_error_std_err", ErrorAmount::StdErr),
+        ("element_error_std_dev", ErrorAmount::StdDev(1.0)),
+        ("element_error_percent", ErrorAmount::Percentage(5.0)),
+    ] {
+        let part = ChartSpec::new(ChartKind::ColumnClustered)
+            .series(series("North", "B", "8E0DD1").with_error_bars(ErrorBars::new(amount)))
+            .render()
+            .expect("error bars");
+        fs::write(dir.join(format!("{file}.xml")), part.xml).expect("write chart");
+    }
+
     // Every kind again with every option that applies to it switched on, so a
     // schema validator sees each code path.
     for (file, kind) in kinds {

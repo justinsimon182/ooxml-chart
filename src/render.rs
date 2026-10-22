@@ -339,7 +339,17 @@ pub(crate) fn chart_space(spec: &ChartSpec) -> Result<ChartPart, ChartError> {
         spec.title_runs.as_ref(),
         spec.title_style.as_ref(),
     ) {
-        out.push_str(&title_xml(&runs, spec.title_position));
+        let title = title_xml(&runs, spec.title_position);
+        out.push_str(&if spec.title_overlay {
+            title.replace(
+                r#"<c:overlay val="0"/></c:title>"#,
+                r#"<c:overlay val="1"/></c:title>"#,
+            )
+        } else {
+            title
+        });
+    } else if spec.no_auto_title {
+        out.push_str(r#"<c:autoTitleDeleted val="1"/>"#);
     }
     match (&spec.view_3d, plots[0].family) {
         // A contour is a surface seen from straight above.
@@ -417,6 +427,27 @@ fn unsupported(what: String) -> Result<(), ChartError> {
 /// case; the worse one is a chart that silently vanishes.
 fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     let primary = &plots[0];
+    let titled = spec.title.is_some() || spec.title_runs.is_some();
+    if spec.title_overlay && !titled {
+        return unsupported("a title overlay without a title".to_string());
+    }
+    if spec.no_auto_title && titled {
+        return unsupported("no_auto_title with a title".to_string());
+    }
+    if spec.series_axis.is_some() {
+        let has_series_axis = matches!(primary.family, Family::Surface { .. })
+            || (primary.three_d
+                && spec
+                    .view_3d
+                    .as_ref()
+                    .is_some_and(|view| primary.has_depth_axis(view)));
+        if !has_series_axis {
+            return unsupported(format!(
+                "a series axis on {:?} without a depth axis",
+                primary.kind
+            ));
+        }
+    }
 
     // Excel draws a pivot chart's series from their caches alone: a series
     // without them loads as no series at all.
@@ -1678,7 +1709,23 @@ fn view_3d_xml(view: &View3D, family: Family) -> String {
 }
 
 /// The depth axis of a 3-D chart, as Excel writes it.
-fn series_axis_xml() -> String {
+fn series_axis_xml(spec: &ChartSpec) -> String {
+    if let Some(axis) = &spec.series_axis {
+        // Excel's tick marks for a depth axis unless the caller says otherwise.
+        let mut axis = axis.clone();
+        axis.major_tick.get_or_insert(crate::spec::TickMark::Out);
+        axis.minor_tick.get_or_insert(crate::spec::TickMark::None);
+        return axis_xml(
+            &AxisPlacement {
+                kind: AxisKind::Series,
+                id: SERIES_AXIS_ID,
+                cross_id: VALUE_AXIS_ID,
+                position: "b",
+                cross_between: "",
+            },
+            &axis,
+        );
+    }
     format!(
         r#"<c:serAx><c:axId val="{SERIES_AXIS_ID}"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="{VALUE_AXIS_ID}"/><c:crosses val="autoZero"/></c:serAx>"#
     )
@@ -2664,6 +2711,7 @@ enum AxisKind {
     Category,
     Date,
     Value,
+    Series,
 }
 
 struct AxisPlacement<'a> {
@@ -2758,11 +2806,11 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
         ));
     }
     if matches!(plots[0].family, Family::Surface { .. }) {
-        out.push_str(&series_axis_xml());
+        out.push_str(&series_axis_xml(spec));
     }
     if let (true, Some(view)) = (plots[0].three_d, &spec.view_3d) {
         if plots[0].has_depth_axis(view) {
-            out.push_str(&series_axis_xml());
+            out.push_str(&series_axis_xml(spec));
         }
     }
     out
@@ -2786,6 +2834,7 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
         AxisKind::Category => "catAx",
         AxisKind::Date => "dateAx",
         AxisKind::Value => "valAx",
+        AxisKind::Series => "serAx",
     };
     let numeric = kind == AxisKind::Value;
     // Bounds, log scale and units mean nothing on a category or date axis;
@@ -2870,7 +2919,7 @@ fn axis_xml(place: &AxisPlacement<'_>, axis: &Axis) -> String {
         None => String::new(),
     };
     let tail = match kind {
-        AxisKind::Category => String::new(),
+        AxisKind::Category | AxisKind::Series => String::new(),
         AxisKind::Date => format!(
             r#"<c:auto val="0"/><c:lblOffset val="100"/><c:baseTimeUnit val="{}"/>{}{}"#,
             axis.date_unit.map_or("days", |unit| unit.code()),

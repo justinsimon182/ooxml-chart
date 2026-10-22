@@ -2731,6 +2731,12 @@ pub struct ChartSpec {
     pub(crate) bubble_scale: u16,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) bubble_3d: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) title_overlay: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) no_auto_title: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) series_axis: Option<Axis>,
 }
 
 impl ChartSpec {
@@ -2777,6 +2783,9 @@ impl ChartSpec {
             secondary_value_axis: Axis::default(),
             bubble_scale: 100,
             bubble_3d: false,
+            title_overlay: false,
+            no_auto_title: false,
+            series_axis: None,
         }
     }
 
@@ -2929,6 +2938,32 @@ impl ChartSpec {
     #[must_use]
     pub fn data_table(mut self, table: DataTable) -> Self {
         self.data_table = Some(table);
+        self
+    }
+
+    /// Lays the chart title over the plot area instead of making room for
+    /// it. Needs a title.
+    #[must_use]
+    pub fn title_overlay(mut self) -> Self {
+        self.title_overlay = true;
+        self
+    }
+
+    /// Stops Excel giving an untitled chart a title of its own: with one
+    /// series, Excel otherwise shows the series name. Refused with a title.
+    #[must_use]
+    pub fn no_auto_title(mut self) -> Self {
+        self.no_auto_title = true;
+        self
+    }
+
+    /// Formats the depth (series) axis of a 3-D chart that has one: a
+    /// surface, or a 3-D line, standard area or column with a depth axis.
+    /// Takes the title, gridlines, visibility, order, tick marks, tick
+    /// labels, line and label style; number options do not apply.
+    #[must_use]
+    pub fn series_axis(mut self, axis: Axis) -> Self {
+        self.series_axis = Some(axis);
         self
     }
 
@@ -3359,6 +3394,68 @@ mod tests {
             .series(one_series())
             .render();
         assert!(matches!(refused, Err(ChartError::Unsupported { .. })));
+    }
+
+    #[test]
+    fn a_title_can_overlay_and_an_untitled_chart_can_refuse_excels_title() {
+        let out = rendered(
+            ChartSpec::new(ChartKind::Pie)
+                .title("T")
+                .title_overlay()
+                .series(one_series()),
+        );
+        assert!(
+            out.contains(r#"<c:overlay val="1"/></c:title><c:autoTitleDeleted val="0"/>"#),
+            "{out}"
+        );
+        let out = rendered(
+            ChartSpec::new(ChartKind::Pie)
+                .no_auto_title()
+                .series(one_series()),
+        );
+        assert!(
+            out.contains(r#"<c:chart><c:autoTitleDeleted val="1"/>"#),
+            "{out}"
+        );
+        for spec in [
+            ChartSpec::new(ChartKind::Pie).title_overlay(),
+            ChartSpec::new(ChartKind::Pie).title("T").no_auto_title(),
+        ] {
+            assert!(matches!(
+                spec.series(one_series()).render(),
+                Err(ChartError::Unsupported { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn a_series_axis_takes_axis_options_only_where_one_exists() {
+        let axis = Axis::default()
+            .title("Depth")
+            .gridlines(true)
+            .reversed(true)
+            .hidden();
+        let out = rendered(
+            ChartSpec::new(ChartKind::Line)
+                .view_3d(View3D::new())
+                .series_axis(axis.clone())
+                .series(one_series()),
+        );
+        let start = out.find("<c:serAx>").expect("a series axis");
+        let ser_ax = &out[start..out[start..].find("</c:serAx>").unwrap() + start];
+        for piece in [
+            r#"<c:orientation val="maxMin"/>"#,
+            r#"<c:delete val="1"/>"#,
+            "<c:majorGridlines/>",
+            "<a:t>Depth</a:t>",
+            r#"<c:majorTickMark val="out"/><c:minorTickMark val="none"/>"#,
+        ] {
+            assert!(ser_ax.contains(piece), "{piece} in {ser_ax}");
+        }
+        let flat = ChartSpec::new(ChartKind::ColumnClustered)
+            .series_axis(axis)
+            .series(one_series());
+        assert!(matches!(flat.render(), Err(ChartError::Unsupported { .. })));
     }
 
     #[test]

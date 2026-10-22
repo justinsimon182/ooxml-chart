@@ -63,6 +63,8 @@ does not read, write, or zip `.xlsx` packages.
 | Data labels: value, category, series name, percent, number format, position | Done — positions validated per kind |
 | Manual plot-area and legend layout | Done — `Layout`, `ChartSpec::plot_area_layout`, `legend_layout` |
 | Manual title and axis-title layout | Done (`title_position`) |
+| Title over the plot, no automatic title | Done — `ChartSpec::title_overlay`, `ChartSpec::no_auto_title` |
+| Depth (series) axis options | Done — `ChartSpec::series_axis` |
 | Leader lines, legend-entry deletion, per-label text from cells or fields | Done (`PointLabel::parts`, `LabelPart`, `LabelField`) |
 | Data table under the plot | Done (`ChartSpec::data_table`) |
 
@@ -94,7 +96,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, each 3-D bar shape, and one drawing per anchor type — 160 in all) validates against the
+date axis, each 3-D bar shape, each Excel chart element, and one drawing per anchor type — 185 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
@@ -115,7 +117,7 @@ Excel is the signal to add a test for what it complained about.
 | Schema validation of the gallery | Done — manual script |
 | Schema validation in CI | Done — `schema` job, schemas vendored in `scripts/schemas` |
 | Round-trip through a real Excel install | Done — `scripts/excel_roundtrip.py`; Windows with desktop Excel, run by hand. 157 of 157 parts load and save back with nothing lost; Excel's known rewrites (defaults left out, labels moved to each series) are listed apart |
-| Parity with Excel's chart types | Done — `scripts/excel_parity.py` has Excel draw each of its 81 `XlChartType`s and matches each to a gallery part: 81 of 81 |
+| Parity with Excel's chart types | Done — `scripts/excel_parity.py` has Excel draw each of its 81 `XlChartType`s and matches each to a gallery part: 81 of 81. It then applies each of Excel's 126 chart elements (`Chart.SetElement`) and checks the gallery emits what each adds: 126 of 126 |
 
 ## Ground rules for new features
 
