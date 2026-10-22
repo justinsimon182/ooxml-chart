@@ -23,7 +23,7 @@ sample data's first column is text; and `dLbls` formatting that Excel moves
 from the chart group onto each series. Anything else is worth a look.
 
     cargo run --example gallery -- out
-    python scripts/excel_roundtrip.py out [--strict] [--verbose]
+    python scripts/excel_roundtrip.py out [--strict] [--verbose] [--keep]
 
 A chart whose fills point at an image (`r:embed`) gets a generated one-pixel
 PNG as `rId1` on its chart part.
@@ -214,8 +214,8 @@ def dropped(original, saved):
 def main():
     flags = [a for a in sys.argv[1:] if a.startswith("--")]
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if len(args) != 1 or any(f not in ("--strict", "--verbose") for f in flags):
-        sys.exit("usage: excel_roundtrip.py <gallery dir> [--strict] [--verbose]")
+    if len(args) != 1 or any(f not in ("--strict", "--verbose", "--keep") for f in flags):
+        sys.exit("usage: excel_roundtrip.py <gallery dir> [--strict] [--verbose] [--keep]")
     gallery = args[0]
     work = tempfile.mkdtemp(prefix="ooxml-chart-excel-")
     os.mkdir(os.path.join(work, "saved"))
@@ -344,6 +344,9 @@ def main():
                 print("    " + line)
     print(f"{len(seen) - changed} of {len(seen)} parts saved back by Excel without losing anything")
 
+    if "--keep" in flags:
+        print(f"workbooks kept in {work}")
+        sys.exit(1 if bad or (changed and "--strict" in flags) else 0)
     for root, dirs, files in os.walk(work, topdown=False):
         for f in files:
             os.remove(os.path.join(root, f))

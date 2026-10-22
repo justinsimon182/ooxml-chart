@@ -193,7 +193,8 @@ treat them as input for the editing session, not as stored state.
 ## Waterfall, funnel, histogram and the other Office 2016 kinds
 
 These live in a `chartEx` part, not a chart part. The drawing frame says so
-with `for_chart_ex`, and the drawing reaches the part with its own
+with `for_chart_ex`, wrapped as Excel saves it so an older reader shows a
+notice instead of failing. The drawing reaches the part with its own
 relationship type:
 
 ```rust
@@ -210,7 +211,7 @@ let waterfall = ChartEx::new(ChartExKind::Waterfall, "'Sheet1'!$B$2:$B$7")
 let histogram = ChartEx::new(ChartExKind::Histogram, "'Sheet1'!$C$2:$C$99")
     .bins(Bins::Width(10.0))
     .render()?;
-let frame = GraphicFrame::new(2, "Chart 1", "rId1").for_chart_ex();
+let frame = GraphicFrame::new(2, "Chart 1", "rId1").for_chart_ex(ChartExKind::Waterfall);
 let content_type = chart_ex_content_types_override("/xl/charts/chartEx1.xml");
 # Ok::<(), ooxml_chart::ChartError>(())
 ```

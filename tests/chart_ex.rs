@@ -113,8 +113,17 @@ fn options_a_kind_does_not_have_are_refused() {
 #[test]
 fn a_frame_for_a_chart_ex_names_the_chartex_namespace() {
     let anchor = Anchor::absolute(0, 0, 4_572_000, 2_743_200);
-    let frame = GraphicFrame::new(2, "Chart 1", "rId1").for_chart_ex();
+    let frame = GraphicFrame::new(2, "Chart 1", "rId1").for_chart_ex(ChartExKind::Funnel);
     let xml = ooxml_chart::anchor_xml_for(&anchor, &frame);
+    // Wrapped as Excel saves it, needing the build that added funnels.
+    assert!(xml.starts_with(concat!(
+        r#"<xdr:absoluteAnchor><xdr:pos x="0" y="0"/><xdr:ext cx="4572000" cy="2743200"/>"#,
+        r#"<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">"#,
+        r#"<mc:Choice xmlns:cx2="http://schemas.microsoft.com/office/drawing/2015/10/21/chartex" Requires="cx2">"#,
+    )));
+    assert!(
+        xml.ends_with("</mc:Fallback></mc:AlternateContent><xdr:clientData/></xdr:absoluteAnchor>")
+    );
     assert!(xml.contains(concat!(
         r#"<a:graphicData uri="http://schemas.microsoft.com/office/drawing/2014/chartex">"#,
         r#"<cx:chart xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex""#,

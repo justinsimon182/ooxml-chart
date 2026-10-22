@@ -9,6 +9,7 @@
 //! the wrong charts, which is the kind of wrong that looks right. So this takes
 //! the ids rather than inventing them.
 
+use crate::chartex::ChartExKind;
 use crate::metrics::{CellAnchor, TwoCellAnchor};
 use crate::xml::escape;
 
@@ -82,9 +83,9 @@ pub struct GraphicFrame {
     /// opens cleanly and nothing looks wrong until someone changes a row
     /// height.
     pub edit_as: Option<String>,
-    /// The frame hosts a `chartEx` part ([`crate::ChartEx`]) rather than a
-    /// `c:` chart. Set it with [`GraphicFrame::for_chart_ex`].
-    pub chart_ex: bool,
+    /// The kind of `chartEx` part ([`crate::ChartEx`]) the frame hosts, or
+    /// `None` for a `c:` chart. Set it with [`GraphicFrame::for_chart_ex`].
+    pub chart_ex: Option<ChartExKind>,
 }
 
 impl GraphicFrame {
@@ -95,14 +96,16 @@ impl GraphicFrame {
             name: name.into(),
             relationship_id: relationship_id.into(),
             edit_as: None,
-            chart_ex: false,
+            chart_ex: None,
         }
     }
 
-    /// Marks the frame as hosting a [`crate::ChartEx`] part.
+    /// Marks the frame as hosting a [`crate::ChartEx`] part of `kind`. The
+    /// frame is wrapped as Excel writes it, so a reader without that kind
+    /// shows a notice instead of failing.
     #[must_use]
-    pub fn for_chart_ex(mut self) -> Self {
-        self.chart_ex = true;
+    pub fn for_chart_ex(mut self, kind: ChartExKind) -> Self {
+        self.chart_ex = Some(kind);
         self
     }
 
@@ -116,7 +119,7 @@ impl GraphicFrame {
 
 /// The frame and its trailing `<xdr:clientData/>`, shared by every anchor type.
 fn frame_xml(frame: &GraphicFrame) -> String {
-    format!(
+    let graphic = format!(
         concat!(
             r#"<xdr:graphicFrame macro="">"#,
             r#"<xdr:nvGraphicFramePr><xdr:cNvPr id="{id}" name="{name}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"#,
@@ -125,17 +128,51 @@ fn frame_xml(frame: &GraphicFrame) -> String {
             r#"<{p}:chart xmlns:{p}="{ns}""#,
             r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
             r#" r:id="{rid}"/>"#,
-            r#"</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/>"#,
+            r#"</a:graphicData></a:graphic></xdr:graphicFrame>"#,
         ),
         id = frame.id,
         name = escape(&frame.name),
         rid = escape(&frame.relationship_id),
-        p = if frame.chart_ex { "cx" } else { "c" },
-        ns = if frame.chart_ex {
+        p = if frame.chart_ex.is_some() { "cx" } else { "c" },
+        ns = if frame.chart_ex.is_some() {
             "http://schemas.microsoft.com/office/drawing/2014/chartex"
         } else {
             "http://schemas.openxmlformats.org/drawingml/2006/chart"
         },
+    );
+    let Some(kind) = frame.chart_ex else {
+        return graphic + "<xdr:clientData/>";
+    };
+    // As Excel saves it: the frame needs the namespace of the Office build
+    // that added the kind, and older readers get a notice shape instead.
+    let (prefix, ns) = match kind {
+        ChartExKind::Funnel => (
+            "cx2",
+            "http://schemas.microsoft.com/office/drawing/2015/10/21/chartex",
+        ),
+        ChartExKind::RegionMap => (
+            "cx4",
+            "http://schemas.microsoft.com/office/drawing/2016/5/10/chartex",
+        ),
+        _ => (
+            "cx1",
+            "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex",
+        ),
+    };
+    format!(
+        concat!(
+            r#"<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">"#,
+            r#"<mc:Choice xmlns:{prefix}="{ns}" Requires="{prefix}">{graphic}</mc:Choice>"#,
+            r#"<mc:Fallback><xdr:sp macro="" textlink="">"#,
+            r#"<xdr:nvSpPr><xdr:cNvPr id="0" name=""/><xdr:cNvSpPr><a:spLocks noTextEdit="1"/></xdr:cNvSpPr></xdr:nvSpPr>"#,
+            r#"<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>"#,
+            r#"<xdr:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="1100"/>"#,
+            r#"<a:t>This chart isn't available in your version of Excel.</a:t></a:r></a:p></xdr:txBody>"#,
+            r#"</xdr:sp></mc:Fallback></mc:AlternateContent><xdr:clientData/>"#,
+        ),
+        prefix = prefix,
+        ns = ns,
+        graphic = graphic
     )
 }
 
@@ -536,7 +573,7 @@ mod tests {
             name: "Chart 1".to_string(),
             relationship_id: "rId1".to_string(),
             edit_as: None,
-            chart_ex: false,
+            chart_ex: None,
         }
     }
 
