@@ -23,7 +23,7 @@ does not read, write, or zip `.xlsx` packages.
 | 3-D bar, column, line, area, pie | Done (`View3D`) |
 | Surface, wireframe surface, contour, wireframe contour | Done (`Surface`, `SurfaceWireframe`, `Contour`, `ContourWireframe`) |
 | Waterfall, funnel, histogram, Pareto, box and whisker, treemap, sunburst | Done â€” `ChartEx`, a `chartEx` part; several series on box and whisker |
-| Pivot charts | Done â€” `ChartSpec::pivot_source`; series need caches; the pivot table is the caller's |
+| Pivot charts | Done â€” `ChartSpec::pivot_source`; series need caches; formats survive a refresh (Excel writes `c:pivotFmts` itself); the pivot table is the caller's |
 | Combining scatter or bubble with other kinds | Done for scatter (added as a `Plot` to column, line or area); bubble cannot be combined in Excel |
 
 ## Series
