@@ -301,3 +301,28 @@ fn bad_styles_on_a_chart_ex_are_refused() {
         Err(ChartError::Unsupported { .. })
     ));
 }
+
+#[test]
+fn a_region_map_colours_by_value_and_leaves_geography_to_excel() {
+    let xml = render(ChartEx::new(ChartExKind::RegionMap, VALUES).categories(CATS));
+    assert!(xml.contains(r#"<cx:numDim type="colorVal">"#), "{xml}");
+    assert!(xml.contains(r#"<cx:series layoutId="regionMap" "#));
+    // A geography without Bing's cache stops Excel looking the regions up.
+    assert!(
+        !xml.contains("<cx:layoutPr") && !xml.contains("geography"),
+        "{xml}"
+    );
+    assert!(xml.contains(r#"<cx:legend pos="r" align="min" overlay="0"/>"#));
+    assert!(!xml.contains("<cx:axis"));
+    assert!(matches!(
+        ChartEx::new(ChartExKind::RegionMap, VALUES).render(),
+        Err(ChartError::Unsupported { .. })
+    ));
+    assert!(matches!(
+        ChartEx::new(ChartExKind::RegionMap, VALUES)
+            .categories(CATS)
+            .value_axis_title("v")
+            .render(),
+        Err(ChartError::Unsupported { .. })
+    ));
+}

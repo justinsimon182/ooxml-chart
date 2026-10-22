@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ChartExKind::RegionMap`: regions shaded by value. Excel looks the region
+  names up on Bing when it opens the file; the crate writes no geography,
+  since one without Bing's cache stops that lookup. Gallery grows to 115
+  parts.
+
 - Chart style and colour parts, the two optional parts Excel 2013+ stores beside
   a chart (`xl/charts/style1.xml`, `colors1.xml`): `ChartStyle` (Excel's default
   style 201 with text and line colours and text sizes changeable) and

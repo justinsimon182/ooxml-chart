@@ -262,6 +262,10 @@ fn run() {
         ),
         ("cx_funnel", ChartEx::new(K::Funnel, vals).categories(cats)),
         (
+            "cx_region_map",
+            ChartEx::new(K::RegionMap, vals).categories(cats),
+        ),
+        (
             "cx_funnel_styled",
             ChartEx::new(K::Funnel, vals)
                 .categories(cats)

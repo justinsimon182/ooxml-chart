@@ -1,5 +1,5 @@
 //! Office 2016 chart kinds: waterfall, funnel, histogram, Pareto, box and
-//! whisker, treemap and sunburst.
+//! whisker, treemap, sunburst and region map.
 //!
 //! These are not `c:` charts. Excel stores them in a separate part type, a
 //! `cx:chartSpace` at `xl/charts/chartExN.xml`, reached from the drawing by a
@@ -55,6 +55,9 @@ pub enum ChartExKind {
     Treemap,
     /// Nested rings sized by value.
     Sunburst,
+    /// Countries, states or other regions shaded by value. Categories are
+    /// region names; Excel looks them up on Bing when it opens the file.
+    RegionMap,
 }
 
 impl ChartExKind {
@@ -66,6 +69,7 @@ impl ChartExKind {
             Self::BoxWhisker => "boxWhisker",
             Self::Treemap => "treemap",
             Self::Sunburst => "sunburst",
+            Self::RegionMap => "regionMap",
         }
     }
 
@@ -76,7 +80,7 @@ impl ChartExKind {
 
     /// Excel shows a legend by default on these kinds only.
     fn default_legend(self) -> bool {
-        matches!(self, Self::Waterfall | Self::Treemap)
+        matches!(self, Self::Waterfall | Self::Treemap | Self::RegionMap)
     }
 }
 
@@ -554,7 +558,10 @@ impl ChartEx {
         if self.connector_lines.is_some() && self.kind != ChartExKind::Waterfall {
             return refuse("connector lines");
         }
-        let has_axes = !matches!(self.kind, ChartExKind::Treemap | ChartExKind::Sunburst);
+        let has_axes = !matches!(
+            self.kind,
+            ChartExKind::Treemap | ChartExKind::Sunburst | ChartExKind::RegionMap
+        );
         if !has_axes && self.category_axis_title.is_some() {
             return refuse("a category axis title");
         }
@@ -744,11 +751,12 @@ impl ChartEx {
             r#" xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex">"#,
             r#"<cx:chartData>"#,
         ));
-        // Hierarchical kinds size their shapes; the rest plot values.
-        let dim = if matches!(kind, ChartExKind::Treemap | ChartExKind::Sunburst) {
-            "size"
-        } else {
-            "val"
+        // Hierarchical kinds size their shapes, a region map colours them, the
+        // rest plot values.
+        let dim = match kind {
+            ChartExKind::Treemap | ChartExKind::Sunburst => "size",
+            ChartExKind::RegionMap => "colorVal",
+            _ => "val",
         };
         for (id, (values, _, _)) in self.all_series().enumerate() {
             out.push_str(&format!(r#"<cx:data id="{id}">"#));
@@ -813,7 +821,11 @@ impl ChartEx {
         }
         out.push_str("</cx:plotArea>");
         if self.legend.unwrap_or(kind.default_legend()) {
-            out.push_str(r#"<cx:legend pos="t" align="ctr" overlay="0"/>"#);
+            out.push_str(if kind == ChartExKind::RegionMap {
+                r#"<cx:legend pos="r" align="min" overlay="0"/>"#
+            } else {
+                r#"<cx:legend pos="t" align="ctr" overlay="0"/>"#
+            });
         }
         out.push_str("</cx:chart>");
         if let Some(style) = &self.chart_area {
