@@ -219,7 +219,13 @@ Excel refuses a workbook whose `chartEx` part lacks a style part **and** a
 colours part: write `ChartStyle::new()` and `ChartColors::new()` beside it
 and reach both from `xl/charts/_rels/chartEx1.xml.rels`. Excel stores each
 range as a hidden workbook name; it reads the plain references written here
-and recreates those names when it saves. One series per chart.
+and recreates those names when it saves.
+
+A box and whisker chart takes more series with `add_series(ChartExSeries::new(..))`
+and its look with `BoxWhiskerStyle` (mean line and markers, inner points,
+outliers, quartile method). A treemap places parent labels with
+`ParentLabels`; every kind shows or hides value labels with `data_labels`.
+The other kinds draw one series.
 
 ## Combination charts
 

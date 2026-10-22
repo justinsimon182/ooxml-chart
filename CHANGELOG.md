@@ -25,8 +25,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   box and whisker, treemap and sunburst. `GraphicFrame::for_chart_ex` hosts
   one in a drawing; `CHART_EX_CONTENT_TYPE`, `CHART_EX_RELATIONSHIP_TYPE` and
   `chart_ex_content_types_override` wire it in. Excel needs the chart's style
-  and colours parts beside it. Gallery grows to 108 parts; every one loads in
+  and colours parts beside it. Gallery grows to 110 parts; every one loads in
   Excel.
+- Box and whisker charts take several series (`ChartExSeries`) and a
+  `BoxWhiskerStyle`; treemaps take `ParentLabels`; every `ChartEx` kind can
+  show or hide value labels.
 
 ### Changed
 
