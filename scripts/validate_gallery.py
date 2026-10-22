@@ -34,7 +34,7 @@ def flatten_extensions(doc):
 def main(parts_dir, schema_dir):
     schemas = {
         "{%s}chartSpace" % CHART: "dml-chart.xsd",
-        "{%s}wsDr" % DRAWING: "dml-spreadsheetDrawing.xsd",
+        "{%s}wsDr" % DRAWING: "drawing-with-chartex.xsd",
     }
     loaded = {}
     invalid = checked = 0

@@ -20,6 +20,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is vendored for the `cs:` namespace); `scripts/excel_roundtrip.py` loads them
   in Excel attached to a chart.
 
+- `ChartEx` writes the Office 2016 kinds as a `chartEx` part: waterfall
+  (with subtotals), funnel, histogram and Pareto (with bin count or width),
+  box and whisker, treemap and sunburst. `GraphicFrame::for_chart_ex` hosts
+  one in a drawing; `CHART_EX_CONTENT_TYPE`, `CHART_EX_RELATIONSHIP_TYPE` and
+  `chart_ex_content_types_override` wire it in. Excel needs the chart's style
+  and colours parts beside it. Gallery grows to 108 parts; every one loads in
+  Excel.
+
 ### Changed
 
 - XML escaping runs in one pass with one allocation. A 50-series line chart

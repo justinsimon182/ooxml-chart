@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Not from ECMA-376. Loads the spreadsheet-drawing schema together with the
+     cx:chart stub, so a frame may reach either a c: chart or a chartEx part. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  targetNamespace="urn:ooxml-chart:validation">
+  <xsd:import namespace="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+    schemaLocation="dml-spreadsheetDrawing.xsd"/>
+  <xsd:import namespace="http://schemas.microsoft.com/office/drawing/2014/chartex"
+    schemaLocation="chartex-frame.xsd"/>
+</xsd:schema>

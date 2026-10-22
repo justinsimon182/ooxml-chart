@@ -100,7 +100,9 @@ lines with markers); bubble; pie and doughnut; pie-of-pie and bar-of-pie; radar
 and filled radar; stock (high-low-close, open-high-low-close, and with volume);
 surface and contour, solid or wireframe. Bar, column, line, area and pie kinds
 also draw in 3-D with `view_3d`. Column, line, area, scatter and bubble kinds
-combine on one chart, optionally with a second value axis.
+combine on one chart, optionally with a second value axis. The Office 2016
+kinds (waterfall, funnel, histogram, Pareto, box and whisker, treemap and
+sunburst) are a separate part type; see below.
 `ChartKind` is `#[non_exhaustive]`; more can be added without a breaking
 change.
 
@@ -187,6 +189,37 @@ let types = [
 
 Excel does not keep these parts when it re-saves a chart it did not author, so
 treat them as input for the editing session, not as stored state.
+
+## Waterfall, funnel, histogram and the other Office 2016 kinds
+
+These live in a `chartEx` part, not a chart part. The drawing frame says so
+with `for_chart_ex`, and the drawing reaches the part with its own
+relationship type:
+
+```rust
+use ooxml_chart::{
+    chart_ex_content_types_override, Bins, ChartEx, ChartExKind, GraphicFrame,
+    CHART_EX_RELATIONSHIP_TYPE,
+};
+
+let waterfall = ChartEx::new(ChartExKind::Waterfall, "'Sheet1'!$B$2:$B$7")
+    .categories("'Sheet1'!$A$2:$A$7")
+    .title("Cash flow")
+    .subtotals([5]) // the last bar is a total
+    .render()?; // xl/charts/chartEx1.xml
+let histogram = ChartEx::new(ChartExKind::Histogram, "'Sheet1'!$C$2:$C$99")
+    .bins(Bins::Width(10.0))
+    .render()?;
+let frame = GraphicFrame::new(2, "Chart 1", "rId1").for_chart_ex();
+let content_type = chart_ex_content_types_override("/xl/charts/chartEx1.xml");
+# Ok::<(), ooxml_chart::ChartError>(())
+```
+
+Excel refuses a workbook whose `chartEx` part lacks a style part **and** a
+colours part: write `ChartStyle::new()` and `ChartColors::new()` beside it
+and reach both from `xl/charts/_rels/chartEx1.xml.rels`. Excel stores each
+range as a hidden workbook name; it reads the plain references written here
+and recreates those names when it saves. One series per chart.
 
 ## Combination charts
 

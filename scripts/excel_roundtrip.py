@@ -92,6 +92,8 @@ def build(path, drawing, drawing_rels, extra, extra_types=None):
         "/xl/worksheets/sheet1.xml": "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml",
         "/xl/drawings/drawing1.xml": "application/vnd.openxmlformats-officedocument.drawing+xml",
     }
+    if "xl/charts/chartEx1.xml" in extra:
+        overrides["/xl/charts/chartEx1.xml"] = "application/vnd.ms-office.chartex+xml"
     if "xl/charts/chart1.xml" in extra:
         overrides["/xl/charts/chart1.xml"] = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
     overrides.update(extra_types or {})
@@ -219,13 +221,39 @@ def main():
     os.mkdir(os.path.join(work, "saved"))
     expected = {}
     column = open(os.path.join(gallery, "column_clustered.xml"), "rb").read()
+    # A chartEx part is reached by a Microsoft relationship type, through a frame
+    # that names the cx namespace: the gallery's own chartEx drawing.
+    chart_ex_rels = (
+        f'{HEAD}<Relationships xmlns="{PKG}"><Relationship Id="rId1" '
+        'Type="http://schemas.microsoft.com/office/2014/relationships/chartEx" '
+        'Target="../charts/chartEx1.xml"/></Relationships>'
+    )
     for part in sorted(glob.glob(os.path.join(gallery, "*.xml"))):
         name = os.path.basename(part)[:-4]
         if name.startswith(("chart_style", "chart_colors")):
             continue  # not charts: attached to one below
         data = open(part, "rb").read()
         out = os.path.join(work, name + ".xlsx")
-        if name.startswith("drawing_"):
+        if name.startswith("cx_") or name == "drawing_chart_ex":
+            target = data if name.startswith("cx_") else open(os.path.join(gallery, "cx_waterfall.xml"), "rb").read()
+            drawing = open(os.path.join(gallery, "drawing_chart_ex.xml"), "rb").read()
+            # Excel refuses a chartEx that lacks either its style or colours part.
+            ms = "http://schemas.microsoft.com/office/2011/relationships"
+            extra = {
+                "xl/charts/chartEx1.xml": target,
+                "xl/charts/style1.xml": open(os.path.join(gallery, "chart_style.xml"), "rb").read(),
+                "xl/charts/colors1.xml": open(os.path.join(gallery, "chart_colors.xml"), "rb").read(),
+                "xl/charts/_rels/chartEx1.xml.rels": (
+                    f'{HEAD}<Relationships xmlns="{PKG}">'
+                    f'<Relationship Id="rId1" Type="{ms}/chartStyle" Target="style1.xml"/>'
+                    f'<Relationship Id="rId2" Type="{ms}/chartColorStyle" Target="colors1.xml"/></Relationships>'
+                ),
+            }
+            build(out, drawing, chart_ex_rels, extra,
+                  {"/xl/charts/style1.xml": "application/vnd.ms-office.chartstyle+xml",
+                   "/xl/charts/colors1.xml": "application/vnd.ms-office.chartcolorstyle+xml"})
+            expected[name] = (1, 1)
+        elif name.startswith("drawing_"):
             drawing = data.decode("utf-8")
             if "<xdr:pic>" in drawing:
                 extra = {"xl/media/image1.png": PNG}
@@ -294,7 +322,11 @@ def main():
     for name in sorted(seen):
         if name not in expected or seen[name][0] == "ERROR":
             continue
-        member = "xl/drawings/drawing1.xml" if name.startswith("drawing_") else "xl/charts/chart1.xml"
+        member = (
+            "xl/charts/chartEx1.xml" if name.startswith("cx_")
+            else "xl/drawings/drawing1.xml" if name.startswith("drawing_")
+            else "xl/charts/chart1.xml"
+        )
         original = zipfile.ZipFile(os.path.join(work, name + ".xlsx")).read(member)
         after = saved_part(os.path.join(work, "saved", name + ".xlsx"), member)
         if after is None:
