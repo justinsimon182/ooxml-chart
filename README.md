@@ -102,7 +102,7 @@ surface and contour, solid or wireframe. Bar, column, line, area and pie kinds
 also draw in 3-D with `view_3d`. Column, line, area, scatter and bubble kinds
 combine on one chart, optionally with a second value axis. The Office 2016
 kinds (waterfall, funnel, histogram, Pareto, box and whisker, treemap and
-sunburst) are a separate part type; see below.
+sunburst, region map) are a separate part type; see below.
 `ChartKind` is `#[non_exhaustive]`; more can be added without a breaking
 change.
 
@@ -220,6 +220,12 @@ colours part: write `ChartStyle::new()` and `ChartColors::new()` beside it
 and reach both from `xl/charts/_rels/chartEx1.xml.rels`. Excel stores each
 range as a hidden workbook name; it reads the plain references written here
 and recreates those names when it saves.
+
+A region map (`ChartExKind::RegionMap`) takes region names as categories.
+Excel looks the names up on Bing when it opens the file and stores the
+result; this crate writes no geography, because a geography without Bing's
+cached shapes stops Excel looking them up. Opening one sends the names to
+Bing.
 
 A box and whisker chart takes more series with `add_series(ChartExSeries::new(..))`
 and its look with `BoxWhiskerStyle` (mean line and markers, inner points,
