@@ -9,11 +9,11 @@
 
 /// Escapes a value for XML text or an attribute.
 ///
-/// # Why the order matters
+/// # One pass
 ///
-/// `&` is escaped **first**. Escaping the apostrophe first would turn `'` into
-/// `&#39;` and then the `&` pass would turn that into `&amp;#39;`, which is the
-/// literal text `&#39;` rather than an apostrophe.
+/// Each character is escaped once, in a single pass. Chained `replace` calls
+/// would need `&` escaped first, or the `&` in `&#39;` would be escaped again
+/// into `&amp;#39;`; a single pass cannot double-escape.
 ///
 /// The apostrophe becomes the numeric reference `&#39;` rather than `&apos;`
 /// because that is what excelize writes, and every part this crate is measured
@@ -26,21 +26,24 @@
 /// NUL pasted into a title makes Excel report the whole file damaged, so they
 /// are dropped rather than written.
 pub(crate) fn escape(value: &str) -> String {
-    let legal = |c: &char| {
-        matches!(
-            c,
-            '\t' | '\n' | '\r' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
-        )
-    };
-    value
-        .chars()
-        .filter(legal)
-        .collect::<String>()
-        .replace('&', "&amp;")
-        .replace('\'', "&#39;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '\'' => out.push_str("&#39;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\t'
+            | '\n'
+            | '\r'
+            | '\u{20}'..='\u{D7FF}'
+            | '\u{E000}'..='\u{FFFD}'
+            | '\u{10000}'..='\u{10FFFF}' => out.push(c),
+            _ => {}
+        }
+    }
+    out
 }
 
 #[cfg(test)]

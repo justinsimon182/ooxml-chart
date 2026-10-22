@@ -92,7 +92,7 @@ does not read, write, or zip `.xlsx` packages.
 ## Verification
 
 Every gallery part (all kinds, a fully-optioned variant of each, combo, bubble,
-date axis, and one drawing per anchor type â€” 94 in all) validates against the
+date axis, and one drawing per anchor type — 98 in all) validates against the
 ECMA-376 transitional schemas, including element order:
 
 ```sh
@@ -103,15 +103,15 @@ python scripts/validate_gallery.py out scripts/schemas
 The schemas are vendored in `scripts/schemas`, and the `schema` CI job runs this.
 
 Schema-valid is not the same as Excel-accepted. Excel also enforces rules the
-XSD cannot express â€” which label positions suit which chart kind, which
-combinations exist â€” and those are encoded and tested here from documented
+XSD cannot express — which label positions suit which chart kind, which
+combinations exist — and those are encoded and tested here from documented
 behaviour, not from a live Excel. The first time a chart is repaired by a real
 Excel is the signal to add a test for what it complained about.
 
 | Item | Status |
 | --- | --- |
-| Schema validation of the gallery | Done â€” manual script |
-| Schema validation in CI | Done â€” `schema` job, schemas vendored in `scripts/schemas` |
+| Schema validation of the gallery | Done — manual script |
+| Schema validation in CI | Done — `schema` job, schemas vendored in `scripts/schemas` |
 | Round-trip through a real Excel install | Done — `scripts/excel_roundtrip.py`; Windows with desktop Excel, run by hand |
 
 ## Ground rules for new features
