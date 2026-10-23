@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ChartSpec::excel_look` draws a chart as Excel draws a new one (style 201):
+  grey text and gridlines, no tick marks, Excel's legend position, gap width,
+  overlap, line widths, markers and doughnut hole.
+- `Series::with_border` outlines the bars, areas, bubbles or slices of a
+  series.
+- `scripts/excel_visual.py` has Excel draw each of 21 chart types from this
+  crate and from its own `AddChart2`, exports both as PNG and compares the
+  pixels: 21 of 21 within 1%.
+
 - `ChartEx::element_style` gives a chartEx element its own fill, border and
   effects: the plot area, title, legend, data labels, axis lines, axis titles
   and gridlines (`ChartExElement`). An element the chart does not draw is
@@ -39,6 +48,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `scripts/excel_parity.py` also has Excel apply every value of its
   formatting options (216 formats; Excel refuses 11 more) and checks the
   gallery writes each: 216 of 216 matched (207 parts).
+
+### Fixed
+
+- A line, radar or scatter series with no `smooth` set now writes
+  `<c:smooth val="0"/>`. Left out, Excel reads it as a smooth curve.
 
 ## [0.8.0] - 2026-10-22
 

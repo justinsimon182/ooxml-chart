@@ -855,6 +855,16 @@ fn check_series(plot: &PlotRef<'_>, series: &Series) -> Result<(), ChartError> {
     if let Some(points) = series.line_width_pt {
         check_line_width(points)?;
     }
+    if let Some((color, points)) = &series.border {
+        check_color(color)?;
+        check_line_width(*points)?;
+        if matches!(
+            plot.family,
+            Family::Line | Family::Scatter | Family::Stock { .. } | Family::Radar { filled: false }
+        ) {
+            return unsupported(format!("a series border on {:?}", plot.kind));
+        }
+    }
     if (series.dash.is_some()
         || series.compound.is_some()
         || series.cap.is_some()
@@ -2228,11 +2238,8 @@ fn series_xml(plot: &PlotRef<'_>, index: usize, series: &Series, spec: &ChartSpe
 }
 
 fn smooth_xml(series: &Series) -> String {
-    if series.smooth {
-        r#"<c:smooth val="1"/>"#.to_string()
-    } else {
-        String::new()
-    }
+    // Left out, the element means "smooth": Excel draws a curve.
+    format!(r#"<c:smooth val="{}"/>"#, u8::from(series.smooth))
 }
 
 fn line_width_attr(points: Option<f64>) -> String {
@@ -2257,11 +2264,16 @@ fn shape_xml(plot: &PlotRef<'_>, series: &Series) -> String {
             .map(fill_xml)
             .or_else(|| color.map(solid))
             .map_or_else(
-                || series_sp_pr("", series.effects.as_ref()),
-                |fill| series_sp_pr(&fill, series.effects.as_ref()),
+                || series_sp_pr(&border_xml(series), series.effects.as_ref()),
+                |fill| {
+                    series_sp_pr(
+                        &format!("{fill}{}", border_xml(series)),
+                        series.effects.as_ref(),
+                    )
+                },
             ),
         Family::Pie | Family::Doughnut | Family::OfPie { .. } | Family::Surface { .. } => {
-            series_sp_pr("", series.effects.as_ref())
+            series_sp_pr(&border_xml(series), series.effects.as_ref())
         }
         Family::Stock { open } => {
             // The high-low line (and bars) draw the chart; the series' own
@@ -2844,6 +2856,21 @@ fn effects_xml(effects: Option<&Effects>) -> String {
 }
 
 /// `<c:spPr>` around `inner` (fill and line) and the effects, or nothing.
+/// The outline of a bar, area or slice: `<a:ln>`, or nothing.
+fn border_xml(series: &Series) -> String {
+    series
+        .border
+        .as_ref()
+        .map(|(color, points)| {
+            format!(
+                "<a:ln{}>{}</a:ln>",
+                line_width_attr(Some(*points)),
+                solid(color)
+            )
+        })
+        .unwrap_or_default()
+}
+
 fn series_sp_pr(inner: &str, effects: Option<&Effects>) -> String {
     let effects = effects_xml(effects);
     if inner.is_empty() && effects.is_empty() {

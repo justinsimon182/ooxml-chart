@@ -410,6 +410,11 @@ pub struct Series {
     /// as a line take it.
     #[cfg_attr(feature = "serde", serde(default))]
     pub cap: Option<LineCap>,
+    /// The outline of every bar, area, bubble or slice of the series, as a
+    /// colour and a width in points. Line and scatter series draw a line
+    /// instead and refuse it.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub border: Option<(String, f64)>,
     /// Draw the line as a smooth curve rather than straight segments.
     #[cfg_attr(feature = "serde", serde(default))]
     pub smooth: bool,
@@ -479,6 +484,7 @@ impl Series {
             compound: None,
             arrows: (None, None),
             cap: None,
+            border: None,
             smooth: false,
             marker: None,
             multi_level_categories: false,
@@ -547,6 +553,13 @@ impl Series {
     #[must_use]
     pub fn with_dash(mut self, dash: Dash) -> Self {
         self.dash = Some(dash);
+        self
+    }
+
+    /// Outlines each bar, area, bubble or slice of the series.
+    #[must_use]
+    pub fn with_border(mut self, rgb: impl Into<String>, width_pt: f64) -> Self {
+        self.border = Some((rgb.into(), width_pt));
         self
     }
 
@@ -3646,6 +3659,8 @@ pub struct ChartSpec {
     pub(crate) no_auto_title: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) series_axis: Option<Axis>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) excel_look: bool,
 }
 
 impl ChartSpec {
@@ -3694,6 +3709,7 @@ impl ChartSpec {
             bubble_3d: false,
             title_overlay: false,
             no_auto_title: false,
+            excel_look: false,
             series_axis: None,
         }
     }
@@ -3863,6 +3879,17 @@ impl ChartSpec {
     #[must_use]
     pub fn no_auto_title(mut self) -> Self {
         self.no_auto_title = true;
+        self
+    }
+
+    /// Draws the chart as Excel draws a new chart of its kind (style 201):
+    /// grey text and gridlines, no tick marks, the legend at the bottom (the top for
+    /// a radar) and Excel's gap width and doughnut hole. The look sets the legend position, gap width, overlap and
+    /// doughnut hole; every other setting it fills only where the spec leaves it
+    /// unset.
+    #[must_use]
+    pub fn excel_look(mut self) -> Self {
+        self.excel_look = true;
         self
     }
 
@@ -4081,7 +4108,134 @@ impl ChartSpec {
     /// [`ChartError::InvalidDataLabelPosition`] and [`ChartError::OutOfRange`]
     /// for settings Excel would repair away rather than honour.
     pub fn render(&self) -> Result<ChartPart, ChartError> {
+        if self.excel_look {
+            return render::chart_space(&self.with_excel_look());
+        }
         render::chart_space(self)
+    }
+
+    /// A copy with Excel's style-201 settings filled in.
+    fn with_excel_look(&self) -> Self {
+        const TEXT: &str = "595959";
+        const LINE: &str = "D9D9D9";
+        let text = |size: f64| {
+            TextStyle::new()
+                .size(size)
+                .bold(false)
+                .color(TEXT)
+                .font("+mn-lt")
+        };
+        let mut spec = self.clone();
+        spec.excel_look = false;
+        spec.title_style.get_or_insert_with(|| text(14.0));
+        spec.legend_style.get_or_insert_with(|| text(9.0));
+        spec.legend = if matches!(spec.kind, ChartKind::Radar | ChartKind::RadarFilled) {
+            LegendPosition::Top
+        } else {
+            LegendPosition::Bottom
+        };
+        if spec.kind == ChartKind::Doughnut {
+            spec.hole_size = 75;
+        }
+        if matches!(spec.kind, ChartKind::Pie | ChartKind::Doughnut) {
+            for series in &mut spec.series {
+                series
+                    .border
+                    .get_or_insert_with(|| ("FFFFFF".to_string(), 1.5));
+            }
+        }
+        spec.chart_area.get_or_insert_with(|| {
+            AreaStyle::new()
+                .fill("FFFFFF")
+                .border(LINE)
+                .border_width(0.75)
+        });
+        let bar = matches!(
+            spec.kind,
+            ChartKind::BarClustered | ChartKind::BarStacked | ChartKind::BarPercentStacked
+        );
+        let column = matches!(
+            spec.kind,
+            ChartKind::ColumnClustered | ChartKind::ColumnStacked | ChartKind::ColumnPercentStacked
+        );
+        if bar || column {
+            let clustered = matches!(
+                spec.kind,
+                ChartKind::BarClustered | ChartKind::ColumnClustered
+            );
+            spec.gap_width = match (clustered, bar) {
+                (false, _) => 150,
+                (true, true) => 182,
+                (true, false) => 219,
+            };
+            // Excel's clustered bar has no overlap; its clustered column pulls bars together.
+            spec.overlap.get_or_insert(match (clustered, bar) {
+                (true, false) => -27,
+                (true, true) => 0,
+                (false, _) => 100,
+            });
+        }
+        let marked = matches!(
+            spec.kind,
+            ChartKind::LineMarkers
+                | ChartKind::LineMarkersStacked
+                | ChartKind::LineMarkersPercentStacked
+                | ChartKind::ScatterLines
+        );
+        if marked
+            || matches!(
+                spec.kind,
+                ChartKind::Line
+                    | ChartKind::LineStacked
+                    | ChartKind::LinePercentStacked
+                    | ChartKind::Radar
+            )
+        {
+            for series in &mut spec.series {
+                // Excel draws a scatter line thinner than the other lines.
+                let width = if spec.kind == ChartKind::ScatterLines {
+                    1.5
+                } else {
+                    2.25
+                };
+                series.line_width_pt.get_or_insert(width);
+                if marked {
+                    series.marker.get_or_insert((MarkerSymbol::Circle, 5));
+                }
+            }
+        }
+        let round = matches!(spec.kind, ChartKind::Pie | ChartKind::Doughnut);
+        if !round {
+            let scatter = matches!(spec.kind, ChartKind::Scatter | ChartKind::ScatterLines);
+            for (axis, category) in [
+                (&mut spec.category_axis, true),
+                (&mut spec.value_axis, false),
+            ] {
+                axis.label_style.get_or_insert_with(|| text(9.0));
+                axis.title_style.get_or_insert_with(|| text(10.0));
+                axis.major_tick.get_or_insert(TickMark::None);
+                axis.minor_tick.get_or_insert(TickMark::None);
+                if category && !scatter {
+                    axis.line
+                        .get_or_insert_with(|| Paint::Color(LINE.to_string()));
+                    axis.line_width_pt.get_or_insert(0.75);
+                } else {
+                    axis.line.get_or_insert(Paint::None);
+                }
+            }
+            let gridded = &mut spec.value_axis;
+            gridded.major_gridlines = true;
+            gridded
+                .gridline_style
+                .get_or_insert_with(|| AreaStyle::new().border(LINE).border_width(0.75));
+            if scatter {
+                let x = &mut spec.category_axis;
+                x.major_gridlines = true;
+                x.gridline_style
+                    .get_or_insert_with(|| AreaStyle::new().border(LINE).border_width(0.75));
+            }
+        }
+        spec
     }
 }
 

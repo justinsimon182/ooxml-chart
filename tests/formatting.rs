@@ -3952,3 +3952,36 @@ mod style_parts {
         );
     }
 }
+
+#[test]
+fn a_line_series_says_it_is_not_smooth_and_the_excel_look_fills_what_is_unset() {
+    // Left out, "smooth" means a curve to Excel.
+    let plain = render(ChartSpec::new(ChartKind::Line).series(series()));
+    assert!(plain.contains(r#"<c:smooth val="0"/></c:ser>"#), "{plain}");
+
+    let looked = render(
+        ChartSpec::new(ChartKind::ColumnClustered)
+            .excel_look()
+            .title("T")
+            .series(series().with_border("FFFFFF", 1.0)),
+    );
+    for part in [
+        r#"<c:gapWidth val="219"/>"#,
+        r#"<c:overlap val="-27"/>"#,
+        r#"<c:legendPos val="b"/>"#,
+        r#"sz="1400""#,
+        r#"<a:srgbClr val="595959"/>"#,
+        r#"<c:majorGridlines>"#,
+        r#"<c:majorTickMark val="none"/>"#,
+    ] {
+        assert!(looked.contains(part), "{part}");
+    }
+
+    // A pie gets the white slice border Excel draws, and a line series refuses one.
+    let pie = render(ChartSpec::new(ChartKind::Pie).excel_look().series(series()));
+    assert!(pie.contains(r#"<a:ln w="19050">"#), "{pie}");
+    assert!(ChartSpec::new(ChartKind::Line)
+        .series(series().with_border("FFFFFF", 1.0))
+        .render()
+        .is_err());
+}
