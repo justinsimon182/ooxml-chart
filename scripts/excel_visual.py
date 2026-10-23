@@ -50,7 +50,7 @@ public static class PixelDiff {
 $xl = New-Object -ComObject Excel.Application
 $xl.Visible = $false; $xl.DisplayAlerts = $false; $xl.AutomationSecurity = 3
 foreach ($line in Get-Content "$dir\kinds.txt") {
-  $name, $type, $range = $line -split ' '
+  $name, $type, $range, $post = $line -split ' '
   try {
     $wb = $xl.Workbooks.Open("$dir\$name.xlsx")
     $ws = $wb.Worksheets.Item(1)
@@ -60,6 +60,13 @@ foreach ($line in Get-Content "$dir\kinds.txt") {
     $e = $ws.Shapes.AddChart2(-1, [int]$type, $o.Left, $o.Top, $o.Width, $o.Height).Chart
     # A square range would otherwise be charted by rows.
     if ($name -notlike 'cx_*') { $e.SetSourceData($ws.Range($range), 2) }
+    # `s2=<type>[,sec]` turns the second series into another type, on the right axis with `sec`.
+    if ($post) {
+      $opts = ($post -replace '^s2=', '') -split ','
+      $s = $e.SeriesCollection(2)
+      $s.ChartType = [int]$opts[0]
+      if ($opts -contains 'sec') { $s.AxisGroup = 2 }
+    }
     $e.Export("$dir\$name.excel.png") | Out-Null
     $wb.Close($false)
     "$name|$([PixelDiff]::Percent("$dir\$name.ours.png", "$dir\$name.excel.png"))"
