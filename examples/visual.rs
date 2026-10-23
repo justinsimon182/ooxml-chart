@@ -310,8 +310,11 @@ fn run() {
         ("cx_histogram", ChartExKind::Histogram, 118),
         ("cx_pareto", ChartExKind::Pareto, 122),
         ("cx_box_whisker", ChartExKind::BoxWhisker, 121),
+        ("cx_region_map", ChartExKind::RegionMap, 140),
     ] {
-        let mut chart = ChartEx::new(kind, "Sheet1!$B$2:$B$5").title("Chart Title");
+        let mut chart = ChartEx::new(kind, "Sheet1!$B$2:$B$5")
+            .title("Chart Title")
+            .name(ooxml_chart::SeriesName::Reference("Sheet1!$B$1".into()));
         if !matches!(kind, ChartExKind::Histogram | ChartExKind::BoxWhisker) {
             chart = chart.categories("Sheet1!$A$2:$A$5");
         }
@@ -323,10 +326,12 @@ fn run() {
         match chart.render() {
             Ok(xml) => {
                 fs::write(dir.join(format!("{name}.xml")), xml).expect("write chart");
-                let style = chart_ex_style(kind).expect("a style part");
-                fs::write(dir.join(format!("{name}.style.xml")), style).expect("write style");
-                fs::write(dir.join(format!("{name}.colors.xml")), chart_ex_colors())
-                    .expect("write colours");
+                // The region map has no style part of its own; the build falls back to the column's.
+                if let Some(style) = chart_ex_style(kind) {
+                    fs::write(dir.join(format!("{name}.style.xml")), style).expect("write style");
+                    fs::write(dir.join(format!("{name}.colors.xml")), chart_ex_colors())
+                        .expect("write colours");
+                }
                 list.push_str(&format!("{name} {excel} {range}\n"));
             }
             Err(error) => eprintln!("skipped {name}: {error}"),
