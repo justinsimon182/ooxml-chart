@@ -479,6 +479,11 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
     for style in [&spec.chart_area, &spec.plot_area].into_iter().flatten() {
         check_area_style(style)?;
     }
+    if let Some((high_low, up, down)) = &spec.stock_styles.as_deref() {
+        for style in [high_low, up, down] {
+            check_area_style(style)?;
+        }
+    }
     if let Some(view) = &spec.view_3d {
         check_view_3d(spec, primary, view)?;
     }
@@ -1619,7 +1624,11 @@ fn plot_xml(spec: &ChartSpec, plot: &PlotRef<'_>, first_index: usize) -> String 
             } else {
                 String::new()
             };
-            format!(r#"<c:stockChart>{series}{labels}<c:hiLowLines/>{bars}{axes}</c:stockChart>"#)
+            let high_low = match &spec.stock_styles.as_deref() {
+                Some((line, _, _)) => format!("<c:hiLowLines>{}</c:hiLowLines>", sp_pr_xml(line)),
+                None => "<c:hiLowLines/>".to_string(),
+            };
+            format!(r#"<c:stockChart>{series}{labels}{high_low}{bars}{axes}</c:stockChart>"#)
         }
         Family::Area { grouping } => format!(
             r#"<c:areaChart><c:grouping val="{grouping}"/><c:varyColors val="0"/>{series}{labels}{drop}{axes}</c:areaChart>"#,
@@ -1710,6 +1719,15 @@ fn stock_bars_xml(spec: &ChartSpec) -> String {
         Some(rgb) => format!("<c:{tag}><c:spPr>{}</c:spPr></c:{tag}>", solid(rgb)),
         None => format!("<c:{tag}/>"),
     };
+    if let Some((_, up, down)) = &spec.stock_styles.as_deref() {
+        let bar = |tag: &str, style| format!("<c:{tag}>{}</c:{tag}>", sp_pr_xml(style));
+        return format!(
+            r#"<c:upDownBars><c:gapWidth val="{}"/>{}{}</c:upDownBars>"#,
+            spec.gap_width,
+            bar("upBars", up),
+            bar("downBars", down)
+        );
+    }
     let (up, down) = match &spec.stock_bars {
         Some((up, down)) => (Some(up), Some(down)),
         None => (None, None),

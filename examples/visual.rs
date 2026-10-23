@@ -164,6 +164,62 @@ fn main() {
             -4101,
             "A1:C5",
         ),
+        (
+            "column_3d_stacked",
+            two(titled(ChartKind::ColumnStacked)).view_3d(view()),
+            55,
+            "A1:C5",
+        ),
+        (
+            "column_3d_percent",
+            two(titled(ChartKind::ColumnPercentStacked)).view_3d(view()),
+            56,
+            "A1:C5",
+        ),
+        (
+            "bar_3d_stacked",
+            two(titled(ChartKind::BarStacked)).view_3d(view()),
+            61,
+            "A1:C5",
+        ),
+        (
+            "column_3d_depth",
+            two(titled(ChartKind::ColumnClustered)).view_3d(view().with_depth_axis()),
+            -4100,
+            "A1:C5",
+        ),
+        (
+            "column_3d_cone",
+            two(titled(ChartKind::ColumnClustered)).view_3d(view().bar_shape(BarShape::Cone)),
+            99,
+            "A1:C5",
+        ),
+        (
+            "column_3d_pyramid",
+            two(titled(ChartKind::ColumnClustered)).view_3d(view().bar_shape(BarShape::Pyramid)),
+            106,
+            "A1:C5",
+        ),
+        (
+            "bar_of_pie",
+            ChartSpec::new(ChartKind::BarOfPie)
+                .excel_look()
+                .title("HB")
+                .series(series("B"))
+                .of_pie(OfPie::new()),
+            71,
+            "A1:B5",
+        ),
+        (
+            "stock_ohlc",
+            titled(ChartKind::StockOpenHighLowClose)
+                .series(series("B"))
+                .series(series("C"))
+                .series(series("D"))
+                .series(series("E")),
+            89,
+            "A1:E5",
+        ),
     ];
     // The Office 2016 kinds, each over the same cells.
     for (name, kind, excel) in [
