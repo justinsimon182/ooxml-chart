@@ -54,6 +54,11 @@ foreach ($line in Get-Content "$dir\kinds.txt") {
   try {
     $wb = $xl.Workbooks.Open("$dir\$name.xlsx")
     $ws = $wb.Worksheets.Item(1)
+    # A region map needs places to draw; Excel fetches its tiles from Bing, so give it time.
+    if ($name -eq 'cx_region_map') {
+      'France','Germany','Spain','Italy' | ForEach-Object -Begin { $i = 2 } -Process { $ws.Cells.Item($i, 1).Value2 = $_; $i++ }
+      Start-Sleep -Seconds 8
+    }
     $o = $ws.ChartObjects(1)
     $o.Chart.Export("$dir\$name.ours.png") | Out-Null
     $ws.Range($range).Select() | Out-Null
@@ -74,6 +79,7 @@ foreach ($line in Get-Content "$dir\kinds.txt") {
       $s.ChartType = [int]$opts[0]
       if ($opts -contains 'sec') { $s.AxisGroup = 2 }
     }
+    if ($name -eq 'cx_region_map') { Start-Sleep -Seconds 8 }
     $e.Export("$dir\$name.excel.png") | Out-Null
     $wb.Close($false)
     "$name|$([PixelDiff]::Percent("$dir\$name.ours.png", "$dir\$name.excel.png"))"
@@ -94,7 +100,10 @@ def main():
         name = line.split()[0]
         data = open(os.path.join(parts, name + ".xml"), "rb").read()
         if name.startswith("cx_"):
-            read = lambda suffix: open(os.path.join(parts, name + suffix), "rb").read()
+            def read(suffix):
+                path = os.path.join(parts, name + suffix)
+                return open(path, "rb").read() if os.path.exists(path) else None
+
             rt.build_chart_ex(
                 os.path.join(work, name + ".xlsx"), data, gallery,
                 read(".style.xml"), read(".colors.xml"),
