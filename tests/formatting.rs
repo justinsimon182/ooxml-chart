@@ -4058,3 +4058,21 @@ fn the_excel_look_styles_the_stock_lines_and_bars() {
     );
     assert!(!xml.contains("<c:spPr><c:spPr>"), "{xml}");
 }
+
+#[test]
+fn the_excel_look_reaches_a_combinations_extra_plots() {
+    let xml = render(
+        ChartSpec::new(ChartKind::ColumnClustered)
+            .excel_look()
+            .series(series())
+            .plot(
+                ooxml_chart::Plot::new(ChartKind::LineMarkers)
+                    .series(series())
+                    .on_secondary_axis(),
+            ),
+    );
+    // Two series in all, so the legend shows; the line has Excel's width and marker.
+    assert!(xml.contains("<c:legendPos val=\"b\"/>"), "{xml}");
+    assert!(xml.contains(r#"<a:ln w="28575""#), "{xml}");
+    assert!(xml.contains(r#"<c:size val="5"/>"#), "{xml}");
+}

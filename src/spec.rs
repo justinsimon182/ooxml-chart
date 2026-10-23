@@ -4150,7 +4150,13 @@ impl ChartSpec {
         spec.excel_look = false;
         spec.title_style.get_or_insert_with(|| text(14.0));
         spec.legend_style.get_or_insert_with(|| text(9.0));
-        let one_plain_series = spec.series.len() == 1
+        let one_plain_series = spec.series.len()
+            + spec
+                .extra_plots
+                .iter()
+                .map(|p| p.series.len())
+                .sum::<usize>()
+            == 1
             && !matches!(
                 spec.kind,
                 ChartKind::Pie | ChartKind::Doughnut | ChartKind::PieOfPie | ChartKind::BarOfPie
@@ -4284,34 +4290,41 @@ impl ChartSpec {
                 spec.value_axis.tick_labels = TickLabels::None;
             }
         }
-        let marked = matches!(
-            spec.kind,
-            ChartKind::LineMarkers
-                | ChartKind::LineMarkersStacked
-                | ChartKind::LineMarkersPercentStacked
-                | ChartKind::ScatterLines
-        );
-        if marked
-            || matches!(
-                spec.kind,
-                ChartKind::Line
-                    | ChartKind::LineStacked
-                    | ChartKind::LinePercentStacked
-                    | ChartKind::Radar
-            )
-        {
-            for series in &mut spec.series {
-                // Excel draws a scatter line thinner than the other lines.
-                let width = if spec.kind == ChartKind::ScatterLines {
-                    1.5
-                } else {
-                    2.25
-                };
-                series.line_width_pt.get_or_insert(width);
-                if marked {
-                    series.marker.get_or_insert((MarkerSymbol::Circle, 5));
+        // The lines and markers of every plot, including a combination's extra plots.
+        let line_look = |kind: ChartKind, series: &mut [Series]| {
+            let marked = matches!(
+                kind,
+                ChartKind::LineMarkers
+                    | ChartKind::LineMarkersStacked
+                    | ChartKind::LineMarkersPercentStacked
+                    | ChartKind::ScatterLines
+            );
+            if marked
+                || matches!(
+                    kind,
+                    ChartKind::Line
+                        | ChartKind::LineStacked
+                        | ChartKind::LinePercentStacked
+                        | ChartKind::Radar
+                )
+            {
+                for series in series {
+                    // Excel draws a scatter line thinner than the other lines.
+                    let width = if kind == ChartKind::ScatterLines {
+                        1.5
+                    } else {
+                        2.25
+                    };
+                    series.line_width_pt.get_or_insert(width);
+                    if marked {
+                        series.marker.get_or_insert((MarkerSymbol::Circle, 5));
+                    }
                 }
             }
+        };
+        line_look(spec.kind, &mut spec.series);
+        for plot in &mut spec.extra_plots {
+            line_look(plot.kind, &mut plot.series);
         }
         let round = matches!(spec.kind, ChartKind::Pie | ChartKind::Doughnut);
         if !round {
@@ -4322,6 +4335,7 @@ impl ChartSpec {
             for (axis, category) in [
                 (&mut spec.category_axis, true),
                 (&mut spec.value_axis, false),
+                (&mut spec.secondary_value_axis, false),
             ] {
                 axis.label_style.get_or_insert_with(|| text(9.0));
                 axis.title_style.get_or_insert_with(|| text(10.0));

@@ -7,7 +7,7 @@ use std::{env, fs, path::PathBuf};
 
 use ooxml_chart::{
     chart_ex_colors, chart_ex_style, BarShape, ChartEx, ChartExKind, ChartKind, ChartSpec, OfPie,
-    Series, SeriesName, View3D,
+    Plot, Series, SeriesName, View3D,
 };
 
 /// Each kind with its Excel `XlChartType` number.
@@ -40,6 +40,16 @@ pub const KINDS: &[(&str, ChartKind, i32)] = &[
 ];
 
 fn main() {
+    // The cases hold many large specs; a debug build overflows the 1 MB main stack.
+    std::thread::Builder::new()
+        .stack_size(64 << 20)
+        .spawn(run)
+        .expect("spawn")
+        .join()
+        .expect("run");
+}
+
+fn run() {
     let dir = PathBuf::from(env::args().nth(1).expect("usage: visual <dir>"));
     fs::create_dir_all(&dir).expect("create dir");
     let series = |column: &str| {
@@ -221,6 +231,51 @@ fn main() {
             "A1:E5",
         ),
     ];
+    // Combinations: the second series drawn as another kind, on the right axis or not.
+    let combo = |kind: ChartKind, second: ChartKind, secondary: bool| {
+        let mut plot = Plot::new(second).series(series("C"));
+        if secondary {
+            plot = plot.on_secondary_axis();
+        }
+        titled(kind).series(series("B")).plot(plot)
+    };
+    for (name, spec, post) in [
+        (
+            "combo_column_line",
+            combo(ChartKind::ColumnClustered, ChartKind::LineMarkers, false),
+            "s2=65",
+        ),
+        (
+            "combo_column_line_secondary",
+            combo(ChartKind::ColumnClustered, ChartKind::LineMarkers, true),
+            "s2=65,sec",
+        ),
+        (
+            "combo_column_area",
+            combo(ChartKind::ColumnClustered, ChartKind::Area, false),
+            "s2=1",
+        ),
+        (
+            "combo_line_column_secondary",
+            combo(ChartKind::Line, ChartKind::ColumnClustered, true),
+            "s2=51,sec",
+        ),
+    ] {
+        let spec = spec.title("Chart Title");
+        match spec.render() {
+            Ok(part) => {
+                fs::write(dir.join(format!("{name}.xml")), part.xml).expect("write chart");
+                // Excel starts from the lead plot's kind.
+                let base = if name.starts_with("combo_line") {
+                    4
+                } else {
+                    51
+                };
+                list.push_str(&format!("{name} {base} A1:C5 {post}\n"));
+            }
+            Err(error) => eprintln!("skipped {name}: {error}"),
+        }
+    }
     // The Office 2016 kinds, each over the same cells.
     for (name, kind, excel) in [
         ("cx_waterfall", ChartExKind::Waterfall, 119),
