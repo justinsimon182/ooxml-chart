@@ -15,7 +15,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   series.
 - `scripts/excel_visual.py` has Excel draw each of 21 chart types from this
   crate and from its own `AddChart2`, exports both as PNG and compares the
-  pixels: 21 of 21 within 1%.
+  pixels: 41 of 41 within 1% (the 21 plain types, bubble, stock, surface,
+  contour, pie-of-pie, the 3-D bar, column, area, line and pie, and the seven
+  chartEx kinds).
+- `chart_ex_style` and `chart_ex_colors` return the style and colours parts
+  Excel writes for a new chartEx of each kind. A chartEx stored with the column
+  chart's style part loses its white treemap borders and labels when Excel
+  redraws it.
+- `OfPie::line_color` colours the lines joining the two plots.
 
 - `ChartEx::element_style` gives a chartEx element its own fill, border and
   effects: the plot area, title, legend, data labels, axis lines, axis titles
@@ -53,6 +60,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A line, radar or scatter series with no `smooth` set now writes
   `<c:smooth val="0"/>`. Left out, Excel reads it as a smooth curve.
+- A pie-of-pie or bar-of-pie with an automatic split no longer writes
+  `<c:splitType val="auto"/>` with no position, which Excel refuses to open.
+  Excel writes no split element for it.
+- A 3-D line or area chart opens in perspective, as Excel's do; only 3-D bars
+  default to right-angle axes. A surface or contour chart's value axis crosses
+  mid-category.
 
 ## [0.8.0] - 2026-10-22
 

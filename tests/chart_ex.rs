@@ -1,8 +1,8 @@
 //! Public-API tests for the Office 2016 chart kinds (`chartEx` parts).
 
 use ooxml_chart::{
-    chart_ex_content_types_override, Anchor, AreaStyle, Bins, ChartError, ChartEx, ChartExElement,
-    ChartExKind, GraphicFrame, SeriesName,
+    chart_ex_colors, chart_ex_content_types_override, chart_ex_style, Anchor, AreaStyle, Bins,
+    ChartError, ChartEx, ChartExElement, ChartExKind, GraphicFrame, SeriesName,
 };
 
 const VALUES: &str = "'S'!$C$2:$C$6";
@@ -406,4 +406,24 @@ fn each_element_takes_its_style_where_excel_writes_it() {
             matches!(chart.render(), Err(ChartError::Unsupported { what }) if what.contains("does not draw"))
         );
     }
+}
+
+#[test]
+fn each_kind_has_the_style_part_excel_writes_for_it() {
+    // Excel numbers a chartEx's style by its kind.
+    for (kind, id) in [
+        (ChartExKind::Waterfall, 395),
+        (ChartExKind::Funnel, 419),
+        (ChartExKind::Histogram, 366),
+        (ChartExKind::Pareto, 366),
+        (ChartExKind::BoxWhisker, 406),
+        (ChartExKind::Treemap, 410),
+        (ChartExKind::Sunburst, 381),
+    ] {
+        let style = String::from_utf8(chart_ex_style(kind).expect("a style").to_vec()).unwrap();
+        assert!(style.contains(&format!(r#" id="{id}""#)), "{kind:?}");
+    }
+    assert!(chart_ex_style(ChartExKind::RegionMap).is_none());
+    let colors = String::from_utf8(chart_ex_colors().to_vec()).unwrap();
+    assert!(colors.contains(r#"meth="cycle" id="10""#));
 }

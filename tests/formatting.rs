@@ -2756,7 +2756,7 @@ mod of_pie {
             "{xml}"
         );
         assert!(
-            xml.contains(r#"</c:ser><c:gapWidth val="150"/><c:splitType val="auto"/><c:secondPieSize val="75"/><c:serLines/></c:ofPieChart>"#),
+            xml.contains(r#"</c:ser><c:gapWidth val="150"/><c:secondPieSize val="75"/><c:serLines/></c:ofPieChart>"#),
             "{xml}"
         );
     }
@@ -3963,7 +3963,8 @@ fn a_line_series_says_it_is_not_smooth_and_the_excel_look_fills_what_is_unset() 
         ChartSpec::new(ChartKind::ColumnClustered)
             .excel_look()
             .title("T")
-            .series(series().with_border("FFFFFF", 1.0)),
+            .series(series().with_border("FFFFFF", 1.0))
+            .series(series()),
     );
     for part in [
         r#"<c:gapWidth val="219"/>"#,
@@ -3984,4 +3985,55 @@ fn a_line_series_says_it_is_not_smooth_and_the_excel_look_fills_what_is_unset() 
         .series(series().with_border("FFFFFF", 1.0))
         .render()
         .is_err());
+}
+
+#[test]
+fn the_excel_look_draws_the_3d_and_pie_of_pie_kinds_as_excel_does() {
+    let three = |kind| {
+        render(
+            ChartSpec::new(kind)
+                .excel_look()
+                .series(series())
+                .series(series())
+                .series(series()),
+        )
+    };
+    // A surface's value axis crosses mid-category, and a contour's labels are keyed in the legend.
+    let contour = three(ChartKind::Contour);
+    assert!(
+        contour.contains(r#"<c:crossBetween val="midCat"/>"#),
+        "{contour}"
+    );
+    assert!(
+        contour.contains(r#"<c:tickLblPos val="none"/>"#),
+        "{contour}"
+    );
+
+    let of_pie = render(
+        ChartSpec::new(ChartKind::PieOfPie)
+            .excel_look()
+            .series(series()),
+    );
+    assert!(of_pie.contains(r#"<c:gapWidth val="100"/>"#), "{of_pie}");
+    // An automatic split writes no split element: Excel refuses `auto` with no position.
+    assert!(!of_pie.contains("splitType"), "{of_pie}");
+    assert!(
+        of_pie.contains(r#"<c:serLines><c:spPr><a:ln w="9525">"#),
+        "{of_pie}"
+    );
+
+    // A 3-D line opens in perspective, a bar at right angles.
+    let view = ooxml_chart::View3D::new();
+    let line = render(
+        ChartSpec::new(ChartKind::Line)
+            .series(series())
+            .view_3d(view.clone()),
+    );
+    assert!(line.contains(r#"<c:rAngAx val="0"/>"#), "{line}");
+    let bar = render(
+        ChartSpec::new(ChartKind::BarClustered)
+            .series(series())
+            .view_3d(view),
+    );
+    assert!(bar.contains(r#"<c:rAngAx val="1"/>"#), "{bar}");
 }

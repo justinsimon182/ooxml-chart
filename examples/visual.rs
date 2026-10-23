@@ -5,7 +5,10 @@
 
 use std::{env, fs, path::PathBuf};
 
-use ooxml_chart::{ChartKind, ChartSpec, Series, SeriesName};
+use ooxml_chart::{
+    chart_ex_colors, chart_ex_style, BarShape, ChartEx, ChartExKind, ChartKind, ChartSpec, OfPie,
+    Series, SeriesName, View3D,
+};
 
 /// Each kind with its Excel `XlChartType` number.
 pub const KINDS: &[(&str, ChartKind, i32)] = &[
@@ -55,9 +58,152 @@ fn main() {
         } else {
             spec.series(series("C")).title("Chart Title")
         };
+        let range = if matches!(kind, ChartKind::Pie | ChartKind::Doughnut) {
+            "A1:B5"
+        } else {
+            "A1:C5"
+        };
         let part = spec.render().expect("a chart");
         fs::write(dir.join(format!("{name}.xml")), part.xml).expect("write chart");
-        list.push_str(&format!("{name} {excel}\n"));
+        list.push_str(&format!("{name} {excel} {range}\n"));
+    }
+    // Kinds that need more than two series, or a view.
+    let titled = |kind| ChartSpec::new(kind).excel_look().title("Chart Title");
+    let three = |spec: ChartSpec| {
+        spec.series(series("B"))
+            .series(series("C"))
+            .series(series("D"))
+    };
+    let two = |spec: ChartSpec| spec.series(series("B")).series(series("C"));
+    let bubble = || {
+        Series::new(
+            SeriesName::Reference("Sheet1!$B$1".into()),
+            "Sheet1!$B$2:$B$5",
+        )
+        .with_categories("Sheet1!$A$2:$A$5")
+        .with_bubble_sizes("Sheet1!$C$2:$C$5")
+    };
+    let view = View3D::new;
+    let extra: Vec<(&str, ChartSpec, i32, &str)> = vec![
+        (
+            "bubble",
+            ChartSpec::new(ChartKind::Bubble)
+                .excel_look()
+                .title("HB")
+                .series(bubble()),
+            15,
+            "A1:C5",
+        ),
+        (
+            "stock_hlc",
+            three(titled(ChartKind::StockHighLowClose)),
+            88,
+            "A1:D5",
+        ),
+        ("surface", three(titled(ChartKind::Surface)), 83, "A1:D5"),
+        (
+            "surface_wireframe",
+            three(titled(ChartKind::SurfaceWireframe)),
+            84,
+            "A1:D5",
+        ),
+        ("contour", three(titled(ChartKind::Contour)), 85, "A1:D5"),
+        (
+            "contour_wireframe",
+            three(titled(ChartKind::ContourWireframe)),
+            86,
+            "A1:D5",
+        ),
+        (
+            "pie_of_pie",
+            ChartSpec::new(ChartKind::PieOfPie)
+                .excel_look()
+                .title("HB")
+                .series(series("B"))
+                .of_pie(OfPie::new()),
+            68,
+            "A1:B5",
+        ),
+        (
+            "column_3d",
+            two(titled(ChartKind::ColumnClustered)).view_3d(view()),
+            54,
+            "A1:C5",
+        ),
+        (
+            "column_3d_cylinder",
+            two(titled(ChartKind::ColumnClustered)).view_3d(view().bar_shape(BarShape::Cylinder)),
+            92,
+            "A1:C5",
+        ),
+        (
+            "bar_3d",
+            two(titled(ChartKind::BarClustered)).view_3d(view()),
+            60,
+            "A1:C5",
+        ),
+        (
+            "pie_3d",
+            ChartSpec::new(ChartKind::Pie)
+                .excel_look()
+                .title("HB")
+                .series(series("B"))
+                .view_3d(view()),
+            -4102,
+            "A1:B5",
+        ),
+        (
+            "area_3d",
+            two(titled(ChartKind::Area)).view_3d(view()),
+            -4098,
+            "A1:C5",
+        ),
+        (
+            "line_3d",
+            two(titled(ChartKind::Line)).view_3d(view()),
+            -4101,
+            "A1:C5",
+        ),
+    ];
+    // The Office 2016 kinds, each over the same cells.
+    for (name, kind, excel) in [
+        ("cx_waterfall", ChartExKind::Waterfall, 119),
+        ("cx_funnel", ChartExKind::Funnel, 123),
+        ("cx_treemap", ChartExKind::Treemap, 117),
+        ("cx_sunburst", ChartExKind::Sunburst, 120),
+        ("cx_histogram", ChartExKind::Histogram, 118),
+        ("cx_pareto", ChartExKind::Pareto, 122),
+        ("cx_box_whisker", ChartExKind::BoxWhisker, 121),
+    ] {
+        let mut chart = ChartEx::new(kind, "Sheet1!$B$2:$B$5").title("Chart Title");
+        if !matches!(kind, ChartExKind::Histogram | ChartExKind::BoxWhisker) {
+            chart = chart.categories("Sheet1!$A$2:$A$5");
+        }
+        let range = if matches!(kind, ChartExKind::Histogram | ChartExKind::BoxWhisker) {
+            "B1:B5"
+        } else {
+            "A1:B5"
+        };
+        match chart.render() {
+            Ok(xml) => {
+                fs::write(dir.join(format!("{name}.xml")), xml).expect("write chart");
+                let style = chart_ex_style(kind).expect("a style part");
+                fs::write(dir.join(format!("{name}.style.xml")), style).expect("write style");
+                fs::write(dir.join(format!("{name}.colors.xml")), chart_ex_colors())
+                    .expect("write colours");
+                list.push_str(&format!("{name} {excel} {range}\n"));
+            }
+            Err(error) => eprintln!("skipped {name}: {error}"),
+        }
+    }
+    for (name, spec, excel, range) in extra {
+        match spec.render() {
+            Ok(part) => {
+                fs::write(dir.join(format!("{name}.xml")), part.xml).expect("write chart");
+                list.push_str(&format!("{name} {excel} {range}\n"));
+            }
+            Err(error) => eprintln!("skipped {name}: {error}"),
+        }
     }
     fs::write(dir.join("kinds.txt"), list).expect("write list");
 }

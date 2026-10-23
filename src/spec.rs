@@ -3410,6 +3410,8 @@ pub struct OfPie {
     pub second_size: u16,
     /// Draw the lines joining the two plots.
     pub series_lines: bool,
+    /// The joining lines' colour; Excel's black when unset.
+    pub line_color: Option<String>,
 }
 
 impl Default for OfPie {
@@ -3418,6 +3420,7 @@ impl Default for OfPie {
             split: OfPieSplit::Auto,
             second_size: 75,
             series_lines: true,
+            line_color: None,
         }
     }
 }
@@ -3439,6 +3442,13 @@ impl OfPie {
     #[must_use]
     pub fn second_size(mut self, percent: u16) -> Self {
         self.second_size = percent;
+        self
+    }
+
+    /// Colours the lines joining the two plots.
+    #[must_use]
+    pub fn line_color(mut self, rgb: impl Into<String>) -> Self {
+        self.line_color = Some(rgb.into());
         self
     }
 
@@ -4129,11 +4139,39 @@ impl ChartSpec {
         spec.excel_look = false;
         spec.title_style.get_or_insert_with(|| text(14.0));
         spec.legend_style.get_or_insert_with(|| text(9.0));
-        spec.legend = if matches!(spec.kind, ChartKind::Radar | ChartKind::RadarFilled) {
-            LegendPosition::Top
-        } else {
-            LegendPosition::Bottom
-        };
+        let one_plain_series = spec.series.len() == 1
+            && !matches!(
+                spec.kind,
+                ChartKind::Pie | ChartKind::Doughnut | ChartKind::PieOfPie | ChartKind::BarOfPie
+            );
+        if spec.legend == LegendPosition::Right {
+            spec.legend = if one_plain_series {
+                // Excel gives one series no legend.
+                LegendPosition::None
+            } else if matches!(spec.kind, ChartKind::Radar | ChartKind::RadarFilled) {
+                LegendPosition::Top
+            } else {
+                LegendPosition::Bottom
+            };
+        }
+        if spec.kind == ChartKind::Bubble {
+            let accents = [
+                ThemeColor::Accent1,
+                ThemeColor::Accent2,
+                ThemeColor::Accent3,
+                ThemeColor::Accent4,
+                ThemeColor::Accent5,
+                ThemeColor::Accent6,
+            ];
+            for (index, series) in spec.series.iter_mut().enumerate() {
+                if series.fill.is_none() && series.color.is_none() {
+                    // Excel's bubbles are 75% opaque.
+                    series.fill = Some(Paint::Solid(
+                        Color::theme(accents[index % 6]).transparency(25),
+                    ));
+                }
+            }
+        }
         if spec.kind == ChartKind::Doughnut {
             spec.hole_size = 75;
         }
@@ -4158,22 +4196,57 @@ impl ChartSpec {
             spec.kind,
             ChartKind::ColumnClustered | ChartKind::ColumnStacked | ChartKind::ColumnPercentStacked
         );
+        if matches!(spec.kind, ChartKind::PieOfPie | ChartKind::BarOfPie) {
+            spec.gap_width = 100;
+            let settings = spec.of_pie.get_or_insert_with(OfPie::default);
+            settings
+                .line_color
+                .get_or_insert_with(|| "A6A6A6".to_string());
+            for series in &mut spec.series {
+                series
+                    .border
+                    .get_or_insert_with(|| ("FFFFFF".to_string(), 1.5));
+            }
+        }
         if bar || column {
             let clustered = matches!(
                 spec.kind,
                 ChartKind::BarClustered | ChartKind::ColumnClustered
             );
             spec.gap_width = match (clustered, bar) {
+                _ if spec.view_3d.is_some() => 150,
                 (false, _) => 150,
                 (true, true) => 182,
                 (true, false) => 219,
             };
             // Excel's clustered bar has no overlap; its clustered column pulls bars together.
-            spec.overlap.get_or_insert(match (clustered, bar) {
-                (true, false) => -27,
-                (true, true) => 0,
-                (false, _) => 100,
-            });
+            if spec.view_3d.is_none() {
+                spec.overlap.get_or_insert(match (clustered, bar) {
+                    (true, false) => -27,
+                    (true, true) => 0,
+                    (false, _) => 100,
+                });
+            }
+        }
+        let surface = matches!(
+            spec.kind,
+            ChartKind::Surface
+                | ChartKind::SurfaceWireframe
+                | ChartKind::Contour
+                | ChartKind::ContourWireframe
+        );
+        // A 3-D line always has a depth axis.
+        if surface || (spec.kind == ChartKind::Line && spec.view_3d.is_some()) {
+            let depth = spec.series_axis.get_or_insert_with(Axis::default);
+            depth.label_style.get_or_insert_with(|| text(9.0));
+            depth
+                .line
+                .get_or_insert_with(|| Paint::Color(LINE.to_string()));
+            depth.line_width_pt.get_or_insert(0.75);
+            if matches!(spec.kind, ChartKind::Contour | ChartKind::ContourWireframe) {
+                // A contour's bands are keyed in the legend, not on the value axis.
+                spec.value_axis.tick_labels = TickLabels::None;
+            }
         }
         let marked = matches!(
             spec.kind,
@@ -4206,7 +4279,10 @@ impl ChartSpec {
         }
         let round = matches!(spec.kind, ChartKind::Pie | ChartKind::Doughnut);
         if !round {
-            let scatter = matches!(spec.kind, ChartKind::Scatter | ChartKind::ScatterLines);
+            let scatter = matches!(
+                spec.kind,
+                ChartKind::Scatter | ChartKind::ScatterLines | ChartKind::Bubble
+            );
             for (axis, category) in [
                 (&mut spec.category_axis, true),
                 (&mut spec.value_axis, false),

@@ -648,6 +648,9 @@ fn validate(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> Result<(), ChartError> {
             return unsupported(format!("of-pie settings on {:?}", primary.kind));
         }
         check_range("second plot size", i64::from(settings.second_size), 5, 200)?;
+        if let Some(color) = &settings.line_color {
+            check_color(color)?;
+        }
         match &settings.split {
             OfPieSplit::Auto => {}
             OfPieSplit::LastPoints(0) => {
@@ -1663,7 +1666,8 @@ fn of_pie_xml(settings: Option<&OfPie>) -> String {
     let default = OfPie::default();
     let settings = settings.unwrap_or(&default);
     let split = match &settings.split {
-        OfPieSplit::Auto => r#"<c:splitType val="auto"/>"#.to_string(),
+        // Excel writes nothing for an automatic split, and refuses `auto` with no position.
+        OfPieSplit::Auto => String::new(),
         OfPieSplit::LastPoints(count) => {
             format!(r#"<c:splitType val="pos"/><c:splitPos val="{count}"/>"#)
         }
@@ -1684,9 +1688,15 @@ fn of_pie_xml(settings: Option<&OfPie>) -> String {
         }
     };
     let lines = if settings.series_lines {
-        "<c:serLines/>"
+        match &settings.line_color {
+            Some(color) => format!(
+                r#"<c:serLines><c:spPr><a:ln w="9525">{}</a:ln></c:spPr></c:serLines>"#,
+                solid(color)
+            ),
+            None => "<c:serLines/>".to_string(),
+        }
     } else {
-        ""
+        String::new()
     };
     format!(
         r#"{split}<c:secondPieSize val="{}"/>{lines}"#,
@@ -1759,8 +1769,10 @@ fn plot_3d_xml(
 /// `<c:view3D>` and the floor and walls that follow it.
 fn view_3d_xml(view: &View3D, family: Family) -> String {
     let pie = family == Family::Pie;
-    let surface = matches!(family, Family::Surface { .. });
-    let right_angle = view.right_angle_axes.unwrap_or(!pie && !surface);
+    // Excel's 3-D line and area charts open in perspective; its bars at right angles.
+    let right_angle = view
+        .right_angle_axes
+        .unwrap_or(matches!(family, Family::Bar { .. }));
     let rot_x = view.rotation_x.unwrap_or(if pie { 30 } else { 15 });
     let rot_y = view.rotation_y.unwrap_or(if pie { 0 } else { 20 });
     let height = view
@@ -3005,7 +3017,7 @@ fn axes_xml(spec: &ChartSpec, plots: &[PlotRef<'_>]) -> String {
         _ => ("b", "l"),
     };
     let cross_between = match family {
-        Family::Area { .. } | Family::Scatter | Family::Bubble => "midCat",
+        Family::Area { .. } | Family::Scatter | Family::Bubble | Family::Surface { .. } => "midCat",
         _ => "between",
     };
     // A scatter or bubble chart has two value axes; the "category" axis holds

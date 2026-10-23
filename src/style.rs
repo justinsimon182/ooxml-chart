@@ -31,6 +31,34 @@ pub const CHART_STYLE_RELATIONSHIP_TYPE: &str =
 pub const CHART_COLORS_RELATIONSHIP_TYPE: &str =
     "http://schemas.microsoft.com/office/2011/relationships/chartColorStyle";
 
+/// The style part Excel writes for a new chart of an Office 2016 kind, byte for
+/// byte, or `None` for the region map, which Excel styles from the map's own
+/// data. Each kind has its own style number (a treemap's is 410, a waterfall's
+/// 395), and its own default fills, borders and label colours: a treemap draws
+/// white tile borders and white labels from it, so a chartEx stored with the
+/// column chart's style part looks different once Excel redraws it.
+#[must_use]
+pub fn chart_ex_style(kind: crate::ChartExKind) -> Option<&'static [u8]> {
+    use crate::ChartExKind as K;
+    Some(match kind {
+        K::Waterfall => include_bytes!("chart_ex_styles/waterfall.xml"),
+        K::Funnel => include_bytes!("chart_ex_styles/funnel.xml"),
+        K::Histogram => include_bytes!("chart_ex_styles/histogram.xml"),
+        K::Pareto => include_bytes!("chart_ex_styles/pareto.xml"),
+        K::BoxWhisker => include_bytes!("chart_ex_styles/boxwhisker.xml"),
+        K::Treemap => include_bytes!("chart_ex_styles/treemap.xml"),
+        K::Sunburst => include_bytes!("chart_ex_styles/sunburst.xml"),
+        _ => return None,
+    })
+}
+
+/// The colours part Excel writes for a new Office 2016 chart (palette 10), byte
+/// for byte. It is the same for every kind.
+#[must_use]
+pub fn chart_ex_colors() -> &'static [u8] {
+    include_bytes!("chart_ex_styles/colors.xml")
+}
+
 const NAMESPACES: &str = concat!(
     r#"xmlns:cs="http://schemas.microsoft.com/office/drawing/2012/chartStyle" "#,
     r#"xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#,
