@@ -61,7 +61,14 @@ foreach ($line in Get-Content "$dir\kinds.txt") {
     # A square range would otherwise be charted by rows.
     if ($name -notlike 'cx_*') { $e.SetSourceData($ws.Range($range), 2) }
     # `s2=<type>[,sec]` turns the second series into another type, on the right axis with `sec`.
-    if ($post) {
+    # Formatting through the object model: labels, legendtop, axtitles.
+    if ($post -eq 'labels') { $e.SetElement(201) }
+    if ($post -eq 'legendtop') { $e.SetElement(102) }
+    if ($post -eq 'axtitles') {
+      $e.SetElement(301); $e.Axes(1).AxisTitle.Text = 'Axis Title'
+      $e.SetElement(309); $e.Axes(2).AxisTitle.Text = 'Axis Title'
+    }
+    if ($post -like 's2=*') {
       $opts = ($post -replace '^s2=', '') -split ','
       $s = $e.SeriesCollection(2)
       $s.ChartType = [int]$opts[0]

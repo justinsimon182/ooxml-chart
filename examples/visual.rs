@@ -6,8 +6,8 @@
 use std::{env, fs, path::PathBuf};
 
 use ooxml_chart::{
-    chart_ex_colors, chart_ex_style, BarShape, ChartEx, ChartExKind, ChartKind, ChartSpec, OfPie,
-    Plot, Series, SeriesName, View3D,
+    chart_ex_colors, chart_ex_style, Axis, BarShape, ChartEx, ChartExKind, ChartKind, ChartSpec,
+    DataLabels, LegendPosition, OfPie, Plot, Series, SeriesName, View3D,
 };
 
 /// Each kind with its Excel `XlChartType` number.
@@ -240,6 +240,31 @@ fn run() {
         titled(kind).series(series("B")).plot(plot)
     };
     for (name, spec, post) in [
+        (
+            "custom_labels",
+            titled(ChartKind::ColumnClustered)
+                .series(series("B"))
+                .series(series("C"))
+                .data_labels(DataLabels::values()),
+            "labels",
+        ),
+        (
+            "custom_legend_top",
+            titled(ChartKind::ColumnClustered)
+                .series(series("B"))
+                .series(series("C"))
+                .legend(LegendPosition::Top),
+            "legendtop",
+        ),
+        (
+            "custom_axis_titles",
+            titled(ChartKind::ColumnClustered)
+                .series(series("B"))
+                .series(series("C"))
+                .category_axis(Axis::default().title("Axis Title"))
+                .value_axis(Axis::default().title("Axis Title")),
+            "axtitles",
+        ),
         (
             "combo_column_line",
             combo(ChartKind::ColumnClustered, ChartKind::LineMarkers, false),
