@@ -58,6 +58,8 @@ foreach ($line in Get-Content "$dir\kinds.txt") {
     $o.Chart.Export("$dir\$name.ours.png") | Out-Null
     $ws.Range($range).Select() | Out-Null
     $e = $ws.Shapes.AddChart2(-1, [int]$type, $o.Left, $o.Top, $o.Width, $o.Height).Chart
+    # A square range would otherwise be charted by rows.
+    if ($name -notlike 'cx_*') { $e.SetSourceData($ws.Range($range), 2) }
     $e.Export("$dir\$name.excel.png") | Out-Null
     $wb.Close($false)
     "$name|$([PixelDiff]::Percent("$dir\$name.ours.png", "$dir\$name.excel.png"))"

@@ -3610,6 +3610,8 @@ pub struct ChartSpec {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) stock_bars: Option<(String, String)>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) stock_styles: Option<Box<(AreaStyle, AreaStyle, AreaStyle)>>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) rounded_corners: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) date_1904: bool,
@@ -3690,6 +3692,7 @@ impl ChartSpec {
             data_labels: None,
             hole_size: 50,
             stock_bars: None,
+            stock_styles: None,
             rounded_corners: false,
             date_1904: false,
             language: None,
@@ -4013,6 +4016,14 @@ impl ChartSpec {
         self
     }
 
+    /// Styles the high-low lines, the up bars and the down bars of a stock
+    /// chart in full (fill and border). Refused on a chart that has none of them.
+    #[must_use]
+    pub fn stock_styles(mut self, high_low: AreaStyle, up: AreaStyle, down: AreaStyle) -> Self {
+        self.stock_styles = Some(Box::new((high_low, up, down)));
+        self
+    }
+
     /// Colours the up bars (second series above the first) and down bars of a
     /// line chart, as six-digit hex. The same bars as [`ChartSpec::stock_bars`].
     /// Needs a plain line chart of at least two series.
@@ -4154,6 +4165,27 @@ impl ChartSpec {
                 LegendPosition::Bottom
             };
         }
+        if matches!(
+            spec.kind,
+            ChartKind::StockHighLowClose | ChartKind::StockOpenHighLowClose
+        ) && spec.stock_styles.is_none()
+            && spec.stock_bars.is_none()
+        {
+            let edge = Paint::Solid(Color::theme(ThemeColor::Text1).lighter(35));
+            let bar = |fill: Paint| {
+                AreaStyle::new()
+                    .fill_paint(fill)
+                    .border_paint(edge.clone())
+                    .border_width(0.75)
+            };
+            spec.stock_styles = Some(Box::new((
+                AreaStyle::new()
+                    .border_paint(Paint::Solid(Color::theme(ThemeColor::Text1).lighter(25)))
+                    .border_width(0.75),
+                bar(Paint::Solid(Color::theme(ThemeColor::Background1))),
+                bar(Paint::Solid(Color::theme(ThemeColor::Text1).lighter(25))),
+            )));
+        }
         if spec.kind == ChartKind::Bubble {
             let accents = [
                 ThemeColor::Accent1,
@@ -4235,8 +4267,12 @@ impl ChartSpec {
                 | ChartKind::Contour
                 | ChartKind::ContourWireframe
         );
-        // A 3-D line always has a depth axis.
-        if surface || (spec.kind == ChartKind::Line && spec.view_3d.is_some()) {
+        // A 3-D line always has a depth axis, and a column asks for one.
+        let depth_axis = spec
+            .view_3d
+            .as_ref()
+            .is_some_and(|view| view.depth_axis || spec.kind == ChartKind::Line);
+        if surface || depth_axis {
             let depth = spec.series_axis.get_or_insert_with(Axis::default);
             depth.label_style.get_or_insert_with(|| text(9.0));
             depth

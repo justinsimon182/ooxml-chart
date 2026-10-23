@@ -4037,3 +4037,24 @@ fn the_excel_look_draws_the_3d_and_pie_of_pie_kinds_as_excel_does() {
     );
     assert!(bar.contains(r#"<c:rAngAx val="1"/>"#), "{bar}");
 }
+
+#[test]
+fn the_excel_look_styles_the_stock_lines_and_bars() {
+    let xml = render(
+        ChartSpec::new(ChartKind::StockOpenHighLowClose)
+            .excel_look()
+            .series(series())
+            .series(series())
+            .series(series())
+            .series(series()),
+    );
+    assert!(
+        xml.contains(r#"<c:hiLowLines><c:spPr><a:ln w="9525">"#),
+        "{xml}"
+    );
+    assert!(
+        xml.contains(r#"<c:upBars><c:spPr><a:solidFill><a:schemeClr val="bg1"/>"#),
+        "{xml}"
+    );
+    assert!(!xml.contains("<c:spPr><c:spPr>"), "{xml}");
+}

@@ -15,9 +15,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   series.
 - `scripts/excel_visual.py` has Excel draw each of 21 chart types from this
   crate and from its own `AddChart2`, exports both as PNG and compares the
-  pixels: 41 of 41 within 1% (the 21 plain types, bubble, stock, surface,
-  contour, pie-of-pie, the 3-D bar, column, area, line and pie, and the seven
-  chartEx kinds).
+  pixels: 49 of 49 within 1% (the 21 plain types, bubble, stock (both), surface,
+  contour, pie-of-pie, bar-of-pie, the 3-D bar, column (stacked, percent,
+  depth, cone, pyramid, cylinder), area, line and pie, and the seven chartEx kinds).
+- `ChartSpec::stock_styles` styles the high-low lines and up and down bars of a
+  stock chart; `excel_look` fills in Excel's.
 - `chart_ex_style` and `chart_ex_colors` return the style and colours parts
   Excel writes for a new chartEx of each kind. A chartEx stored with the column
   chart's style part loses its white treemap borders and labels when Excel
