@@ -1,6 +1,8 @@
 """Compare how Excel draws this crate's charts with how it draws its own.
 
-Usage: excel_visual.py <dir from `cargo run --example visual -- <dir>`> [--keep]
+Usage: excel_visual.py <dir from `cargo run --example visual -- <dir>`> <gallery dir> [--keep]
+
+The gallery dir (from `cargo run --example gallery`) holds the chartEx drawing.
 
 For each chart type the example writes (a plain spec with `excel_look`), this
 builds a workbook holding the part over Sheet1!A1:C5, opens it in Excel, and
@@ -48,14 +50,12 @@ public static class PixelDiff {
 $xl = New-Object -ComObject Excel.Application
 $xl.Visible = $false; $xl.DisplayAlerts = $false; $xl.AutomationSecurity = 3
 foreach ($line in Get-Content "$dir\kinds.txt") {
-  $name, $type = $line -split ' '
+  $name, $type, $range = $line -split ' '
   try {
     $wb = $xl.Workbooks.Open("$dir\$name.xlsx")
     $ws = $wb.Worksheets.Item(1)
     $o = $ws.ChartObjects(1)
     $o.Chart.Export("$dir\$name.ours.png") | Out-Null
-    # Excel charts one series for a pie or doughnut, as the part does.
-    $range = if ($name -in 'pie', 'doughnut') { 'A1:B5' } else { 'A1:C5' }
     $ws.Range($range).Select() | Out-Null
     $e = $ws.Shapes.AddChart2(-1, [int]$type, $o.Left, $o.Top, $o.Width, $o.Height).Chart
     $e.Export("$dir\$name.excel.png") | Out-Null
@@ -69,14 +69,21 @@ $xl.Quit()
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if len(args) != 1:
-        sys.exit("usage: excel_visual.py <dir> [--keep]")
-    parts = args[0]
+    if len(args) != 2:
+        sys.exit("usage: excel_visual.py <parts dir> <gallery dir> [--keep]")
+    parts, gallery = args[0], args[1]
     work = tempfile.mkdtemp(prefix="ooxml-chart-visual-")
     shutil.copy(os.path.join(parts, "kinds.txt"), work)
     for line in open(os.path.join(parts, "kinds.txt")):
         name = line.split()[0]
         data = open(os.path.join(parts, name + ".xml"), "rb").read()
+        if name.startswith("cx_"):
+            read = lambda suffix: open(os.path.join(parts, name + suffix), "rb").read()
+            rt.build_chart_ex(
+                os.path.join(work, name + ".xlsx"), data, gallery,
+                read(".style.xml"), read(".colors.xml"),
+            )
+            continue
         rt.build(
             os.path.join(work, name + ".xlsx"),
             rt.WS_DRAWING % rt.GRAPHIC_FRAME,

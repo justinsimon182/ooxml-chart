@@ -81,9 +81,10 @@ pub use spec::{
     ThemeColor, TickLabels, TickMark, TitleRun, Trendline, TrendlineKind, Underline, View3D,
 };
 pub use style::{
-    chart_colors_content_types_override, chart_style_content_types_override, ChartColors,
-    ChartStyle, ColorMethod, CHART_COLORS_CONTENT_TYPE, CHART_COLORS_RELATIONSHIP_TYPE,
-    CHART_STYLE_CONTENT_TYPE, CHART_STYLE_RELATIONSHIP_TYPE,
+    chart_colors_content_types_override, chart_ex_colors, chart_ex_style,
+    chart_style_content_types_override, ChartColors, ChartStyle, ColorMethod,
+    CHART_COLORS_CONTENT_TYPE, CHART_COLORS_RELATIONSHIP_TYPE, CHART_STYLE_CONTENT_TYPE,
+    CHART_STYLE_RELATIONSHIP_TYPE,
 };
 pub use template::TemplateChart;
 

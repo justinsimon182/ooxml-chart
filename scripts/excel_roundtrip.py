@@ -236,6 +236,31 @@ def dropped(original, saved):
     return lines
 
 
+def build_chart_ex(path, part, gallery, style=None, colors=None):
+    """One workbook holding a chartEx part, reached through the gallery's own chartEx drawing."""
+    chart_ex_rels = (
+        f'{HEAD}<Relationships xmlns="{PKG}"><Relationship Id="rId1" '
+        'Type="http://schemas.microsoft.com/office/2014/relationships/chartEx" '
+        'Target="../charts/chartEx1.xml"/></Relationships>'
+    )
+    drawing = open(os.path.join(gallery, "drawing_chart_ex.xml"), "rb").read()
+    # Excel refuses a chartEx that lacks either its style or colours part.
+    ms = "http://schemas.microsoft.com/office/2011/relationships"
+    extra = {
+        "xl/charts/chartEx1.xml": part,
+        "xl/charts/style1.xml": style or open(os.path.join(gallery, "chart_style.xml"), "rb").read(),
+        "xl/charts/colors1.xml": colors or open(os.path.join(gallery, "chart_colors.xml"), "rb").read(),
+        "xl/charts/_rels/chartEx1.xml.rels": (
+            f'{HEAD}<Relationships xmlns="{PKG}">'
+            f'<Relationship Id="rId1" Type="{ms}/chartStyle" Target="style1.xml"/>'
+            f'<Relationship Id="rId2" Type="{ms}/chartColorStyle" Target="colors1.xml"/></Relationships>'
+        ),
+    }
+    build(path, drawing, chart_ex_rels, extra,
+          {"/xl/charts/style1.xml": "application/vnd.ms-office.chartstyle+xml",
+           "/xl/charts/colors1.xml": "application/vnd.ms-office.chartcolorstyle+xml"})
+
+
 def main():
     flags = [a for a in sys.argv[1:] if a.startswith("--")]
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -248,11 +273,6 @@ def main():
     column = open(os.path.join(gallery, "column_clustered.xml"), "rb").read()
     # A chartEx part is reached by a Microsoft relationship type, through a frame
     # that names the cx namespace: the gallery's own chartEx drawing.
-    chart_ex_rels = (
-        f'{HEAD}<Relationships xmlns="{PKG}"><Relationship Id="rId1" '
-        'Type="http://schemas.microsoft.com/office/2014/relationships/chartEx" '
-        'Target="../charts/chartEx1.xml"/></Relationships>'
-    )
     for part in sorted(glob.glob(os.path.join(gallery, "*.xml"))):
         name = os.path.basename(part)[:-4]
         if name.startswith(("chart_style", "chart_colors")):
@@ -261,22 +281,7 @@ def main():
         out = os.path.join(work, name + ".xlsx")
         if name.startswith("cx_") or name == "drawing_chart_ex":
             target = data if name.startswith("cx_") else open(os.path.join(gallery, "cx_waterfall.xml"), "rb").read()
-            drawing = open(os.path.join(gallery, "drawing_chart_ex.xml"), "rb").read()
-            # Excel refuses a chartEx that lacks either its style or colours part.
-            ms = "http://schemas.microsoft.com/office/2011/relationships"
-            extra = {
-                "xl/charts/chartEx1.xml": target,
-                "xl/charts/style1.xml": open(os.path.join(gallery, "chart_style.xml"), "rb").read(),
-                "xl/charts/colors1.xml": open(os.path.join(gallery, "chart_colors.xml"), "rb").read(),
-                "xl/charts/_rels/chartEx1.xml.rels": (
-                    f'{HEAD}<Relationships xmlns="{PKG}">'
-                    f'<Relationship Id="rId1" Type="{ms}/chartStyle" Target="style1.xml"/>'
-                    f'<Relationship Id="rId2" Type="{ms}/chartColorStyle" Target="colors1.xml"/></Relationships>'
-                ),
-            }
-            build(out, drawing, chart_ex_rels, extra,
-                  {"/xl/charts/style1.xml": "application/vnd.ms-office.chartstyle+xml",
-                   "/xl/charts/colors1.xml": "application/vnd.ms-office.chartcolorstyle+xml"})
+            build_chart_ex(out, target, gallery)
             expected[name] = (1, 1)
         elif name.startswith("drawing_"):
             drawing = data.decode("utf-8")
